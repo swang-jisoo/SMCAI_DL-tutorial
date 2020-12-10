@@ -1,4 +1,6 @@
-# A small project to build Neural Network models for image classification before starting a main project
+# Image Classification project
+
+A small project to build Neural Network models for image classification before starting a main project
 
 Dataset used
 - CIFAR10
