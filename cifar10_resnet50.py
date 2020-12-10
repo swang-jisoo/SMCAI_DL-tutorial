@@ -1,3 +1,14 @@
+#####
+# dataset: CIFAR-10
+
+# model: ResNet-50
+# ref. paper: Deep Residual Learning for Image Recognition
+
+# Notation
+# ***: Questions or further information to check are remained
+# NOTE: if the code is modified, be aware of the corresponding codes
+#####
+
 # Import necessary libraries
 import tensorflow as tf
 from tensorflow.keras.layers import ZeroPadding2D, Conv2D, Activation, BatchNormalization, MaxPooling2D, GlobalAveragePooling2D, Flatten, Dense
@@ -5,10 +16,10 @@ from tensorflow.keras import Input, Model
 
 # Fix the gpu memory issue
 config = tf.compat.v1.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.3 # <=0.3 with GTX 1050 (2GB)
+config.gpu_options.per_process_gpu_memory_fraction = 0.3  # <=0.3 with GTX 1050 (2GB)
 session = tf.compat.v1.Session(config=config)
 
-# Load mnist dataset
+# Load cifar10 dataset
 cifar10 = tf.keras.datasets.cifar10
 (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 
@@ -17,39 +28,36 @@ x_train, x_test = x_train / 255.0, x_test / 255.0
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
-# hyper-parameters
-epochs = 20
+# Set the value of hyper-parameters
 learning_rate = 0.0001
+epochs = 20
 batch_size = 16
 
-# results
-# ==> batch size: 64; running out of memory [64,,1024]
-# ==> 32; [32,,2048]
-'''
-Total params: 23,503,690
-Trainable params: 23,502,826
-Non-trainable params: 864
-'''
-
-# Shuffle and batch the training set
-train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train)).shuffle(100000).batch(128)
-test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(128)
+# Results by hyper-parameters
+# batch size = 64 or 32 does not work (running out of memory)
+# ==> learning rate: 0.001; Epoch: 20; batch size: 16;
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16; loss: 1.4228 - accuracy: 0.7004
+# ==> learning rate: 0.0005; Epoch: 20; batch size: 16;
 
 # Initiate a ResNet50 architecture
-input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input') # 32,32,3
+input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')  # 32,32,3
+
 # conv1
+
+# kernel_initializer:
+
 x = ZeroPadding2D(padding=3, name='conv1_pad')(input_tensor)
-x = Conv2D(64, 7, strides=(2,2), # stride -> downsampling
+x = Conv2D(64, 7, strides=(2, 2),  # stride -> downsampling
            kernel_initializer='he_normal', name='conv1')(x)
-x = BatchNormalization(axis=1, name='conv1_bn')(x) # ***bn, axis
-x = Activation('relu', name='conv1_relu')(x) # 16,16,64
+x = BatchNormalization(axis=1, name='conv1_bn')(x)  # In tf, batch channel comes first ==> axis=1
+x = Activation('relu', name='conv1_relu')(x)  # 16,16,64
 
 # conv2_max pooling
 x = ZeroPadding2D(padding=1, name='conv2_maxpool_pad')(x)
-x = MaxPooling2D((3, 3), strides=(2, 2), name='conv2_maxpool')(x) # 8,8,64
+x = MaxPooling2D((3, 3), strides=(2, 2), name='conv2_maxpool')(x)  # 8,8,64
 
 # conv2_a
-shortcut = Conv2D(256, 1, name='conv2_shortcut')(x) # shortcut-residual dimension match (projection shortcut)
+shortcut = Conv2D(256, 1, name='conv2_shortcut')(x)  # shortcut-residual dimension match (projection shortcut)
 shortcut = BatchNormalization(axis=1, name='conv2-shortcut_bn')(shortcut)
 
 x = Conv2D(64, 1,
@@ -67,10 +75,12 @@ x = Conv2D(256, 1,
 x = BatchNormalization(axis=1, name='conv2a_3bn')(x)
 x = Activation('relu', name='conv2a_3relu')(x)
 
-x = tf.keras.layers.Add()([shortcut, x]) # *** add tensor; neither extra parameter nor computation complexity
-x = Activation('relu', name='conv2a_out')(x) # 8, 8, 256
+x = tf.keras.layers.Add()([shortcut, x])  # element-wise computation
+x = Activation('relu', name='conv2a_out')(x)  # 8, 8, 256
 
 # conv2_b
+shortcut = x
+
 x = Conv2D(64, 1,
            kernel_initializer='he_normal', name='conv2b_1')(x)
 x = BatchNormalization(axis=1, name='conv2b_1bn')(x)
@@ -90,6 +100,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv2b_out')(x)
 
 # conv2_c
+shortcut = x
+
 x = Conv2D(64, 1,
            kernel_initializer='he_normal', name='conv2c_1')(x)
 x = BatchNormalization(axis=1, name='conv2c_1bn')(x)
@@ -109,10 +121,11 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv2c_out')(x)
 
 # conv3_a
-shortcut = Conv2D(512, 1, name='conv3_shortcut')(x)
+shortcut = Conv2D(512, 1, strides=(2, 2),  # Down-sampling is performed by conv3_a, conv4_a, and conv5_a with stride=2
+                  name='conv3_shortcut')(x)
 shortcut = BatchNormalization(axis=1, name='conv3_shortcut_bn')(shortcut)
 
-x = Conv2D(128, 1,
+x = Conv2D(128, 1, strides=(2, 2),
            kernel_initializer='he_normal', name='conv3a_1')(x)
 x = BatchNormalization(axis=1, name='conv3a_1bn')(x)
 x = Activation('relu', name='conv3a_1relu')(x)
@@ -128,9 +141,11 @@ x = BatchNormalization(axis=1, name='conv3a_3bn')(x)
 x = Activation('relu', name='conv3a_3relu')(x)
 
 x = tf.keras.layers.Add()([shortcut, x])
-x = Activation('relu', name='conv3a_out')(x) # 8, 8, 512
+x = Activation('relu', name='conv3a_out')(x)  # 8, 8, 512
 
 # conv3_b
+shortcut = x
+
 x = Conv2D(128, 1,
            kernel_initializer='he_normal', name='conv3b_1')(x)
 x = BatchNormalization(axis=1, name='conv3b_1bn')(x)
@@ -150,6 +165,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv3b_out')(x)
 
 # conv3_c
+shortcut = x
+
 x = Conv2D(128, 1,
            kernel_initializer='he_normal', name='conv3c_1')(x)
 x = BatchNormalization(axis=1, name='conv3c_1bn')(x)
@@ -169,6 +186,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv3c_out')(x)
 
 # conv3_d
+shortcut = x
+
 x = Conv2D(128, 1,
            kernel_initializer='he_normal', name='conv3d_1')(x)
 x = BatchNormalization(axis=1, name='conv3d_1bn')(x)
@@ -188,10 +207,10 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv3d_out')(x)
 
 # conv4_a
-shortcut = Conv2D(1024, 1, name='conv4_shortcut')(x)
+shortcut = Conv2D(1024, 1, strides=(2, 2), name='conv4_shortcut')(x)
 shortcut = BatchNormalization(axis=1, name='conv4_shortcut_bn')(shortcut)
 
-x = Conv2D(256, 1,
+x = Conv2D(256, 1, strides=(2, 2),
            kernel_initializer='he_normal', name='conv4a_1')(x)
 x = BatchNormalization(axis=1, name='conv4a_1bn')(x)
 x = Activation('relu', name='conv4a_1relu')(x)
@@ -210,6 +229,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4a_out')(x)
 
 # conv4_b
+shortcut = x
+
 x = Conv2D(256, 1,
            kernel_initializer='he_normal', name='conv4b_1')(x)
 x = BatchNormalization(axis=1, name='conv4b_1bn')(x)
@@ -229,6 +250,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4b_out')(x)
 
 # conv4_c
+shortcut = x
+
 x = Conv2D(256, 1,
            kernel_initializer='he_normal', name='conv4c_1')(x)
 x = BatchNormalization(axis=1, name='conv4c_1bn')(x)
@@ -248,6 +271,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4c_out')(x)
 
 # conv4_d
+shortcut = x
+
 x = Conv2D(256, 1,
            kernel_initializer='he_normal', name='conv4d_1')(x)
 x = BatchNormalization(axis=1, name='conv4d_1bn')(x)
@@ -267,6 +292,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4d_out')(x)
 
 # conv4_e
+shortcut = x
+
 x = Conv2D(256, 1,
            kernel_initializer='he_normal', name='conv4e_1')(x)
 x = BatchNormalization(axis=1, name='conv4e_1bn')(x)
@@ -286,6 +313,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4e_out')(x)
 
 # conv4_f
+shortcut = x
+
 x = Conv2D(256, 1,
            kernel_initializer='he_normal', name='conv4f_1')(x)
 x = BatchNormalization(axis=1, name='conv4f_1bn')(x)
@@ -305,10 +334,10 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv4f_out')(x)
 
 # conv5_a
-shortcut = Conv2D(2048, 1, name='conv5_shortcut')(x)
+shortcut = Conv2D(2048, 1, strides=(2, 2), name='conv5_shortcut')(x)
 shortcut = BatchNormalization(axis=1, name='conv5_shortcut_bn')(shortcut)
 
-x = Conv2D(512, 1,
+x = Conv2D(512, 1, strides=(2, 2),
            kernel_initializer='he_normal', name='conv5a_1')(x)
 x = BatchNormalization(axis=1, name='conv5a_1bn')(x)
 x = Activation('relu', name='conv5a_1relu')(x)
@@ -327,6 +356,8 @@ x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv5a_out')(x)
 
 # conv5_b
+shortcut = x
+
 x = Conv2D(512, 1,
            kernel_initializer='he_normal', name='conv5b_1')(x)
 x = BatchNormalization(axis=1, name='conv5b_1bn')(x)
@@ -345,8 +376,9 @@ x = Activation('relu', name='conv5b_3relu')(x)
 x = tf.keras.layers.Add()([shortcut, x])
 x = Activation('relu', name='conv5b_out')(x)
 
-
 # conv5_c
+shortcut = x
+
 x = Conv2D(512, 1,
            kernel_initializer='he_normal', name='conv5c_1')(x)
 x = BatchNormalization(axis=1, name='conv5c_1bn')(x)
