@@ -48,7 +48,7 @@ batch_size = 64
 
 # Batch the training set for batch normalization
 # *** check shuffle(buffer_size).batch(batch_size)
-train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train)).batch(batch_size)
+# train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train)).batch(batch_size)
 
 # Initiate a VGG16 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
