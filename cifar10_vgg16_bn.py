@@ -38,9 +38,9 @@ x_test = x_test.astype("float32")
 # Set the value of hyper-parameters
 epochs = 30
 learning_rate = 0.0001
-batch_size = 256
+batch_size = 64
 
-# Results
+# Results by hyper-parameters
 # ==> learning rate: 0.0001; Epoch: 30; (default = None); loss: 1.2150 - accuracy: 0.7998
 # ==> learning rate: 0.0001, epochs: 30; batch_size: 64; loss: 0.9947 - accuracy: 0.7937
 # ==> learning rate: 0.0001, epochs: 30; batch_size: 128; loss: 1.0447 - accuracy: 0.7891 (faster)
@@ -55,10 +55,17 @@ input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
 
 # Batch Normalization (BN)
 # tf.keras.layers.BatchNormalization(axis=-1, trainable=True)
+# Normalizes the activations of the previous layer at each batch, i.e. applies a transformation that maintains
+# the mean activation close to 0 and the activation standard deviation close to 1.
 # axis = Integer, the axis that should be normalized (1 if batch axis is first, -1 if batch axis is last)
-# trainable = if True the variables will be marked as trainable.
-#   -
-# *** conv2d - bn - relu vs. conv (relu) - bn
+# trainable = if True the variables will be marked as trainable and the layer will normalize its inputs using the mean
+# and variance of the current batch of inputs
+
+# *** Controversial issue regarding the order of convolution, BN, activation layers:
+# Statistically, the "conv - relu - bn" order makes more sense, which eventually outputs zero mean and unit variance
+# as its original purpose intended. However, the original paper prescribed using "conv - bn - relu" order and it is
+# currently more widely used. Also, the impact of the order on the performance is negligible. Thus, in our projects,
+# we will keep with the order of "conv - bn - relu".
 
 # block 1
 conv1_1 = Conv2D(64, 3, padding='same', name='conv1-1')(input_tensor)
@@ -145,7 +152,7 @@ vgg16_bn.compile(loss='sparse_categorical_crossentropy',
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-vgg16_bn.fit(x_train, y_train, batch_size=batch_size, epochs=30)
+vgg16_bn.fit(x_train, y_train, batch_size=batch_size, epochs=30)  # Set batch
 
 # Test the model with test set
-vgg16_bn.evaluate(x_test, y_test, verbose=2)
+vgg16_bn.predict(x_test, y_test, verbose=2)
