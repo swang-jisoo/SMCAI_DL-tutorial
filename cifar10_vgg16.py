@@ -164,7 +164,12 @@ vgg16.compile(loss='sparse_categorical_crossentropy',
 # Epoch: running the entire dataset
 vgg16.fit(x_train, y_train, epochs=epochs)
 
-# Test the model with test set
+# Predict the model with test set
+# model.evaluate(x, y): Returns the loss value & metrics values for the model in test mode.
+# model.predict(x): Generates output predictions for the input samples
+# The both methods use the same interpretation rules, but as the explanation indicates, model.evaluate() uses for
+# validation, while model.predict() uses for prediction. Here, model.evaluate() is used to check the loss and
+# accuracy easily.
 vgg16.evaluate(x_test, y_test, verbose=2)
 
 '''
