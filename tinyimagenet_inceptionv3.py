@@ -28,6 +28,8 @@
 #       * 1x1 conv benefits: increased representational power of NN + dimension reduction (network-in-network)
 #       ==> inception-v2,v3: 1x1 + 1x1-3x3 + 1x1-3x3-3x3 + 3x3maxpool-1x1 -> filter concatenation (factorization)
 
+# RMSProp Optimizer; Factorized 7x7 convolutions; BatchNorm in the Auxillary Classifiers; Label Smoothing
+
 # Import necessary libraries
 import tensorflow as tf
 from tensorflow.keras.layers import ZeroPadding2D, Conv2D, Activation, BatchNormalization, MaxPooling2D, GlobalAveragePooling2D, Flatten, Dense
@@ -48,16 +50,18 @@ x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
 # Set the value of hyper-parameters
-learning_rate = 0.0005
+upsampling_size = (2,2)
+learning_rate = 0.0001
 epochs = 20
 batch_size = 16
 
 # Results by hyper-parameters
-# ==>
+# ==> upsampling: 2; learing rate: 0.0001; epoch: 20; batch size: 16;
 
 # Initiate a ResNet50 architecture
-# input at least 128x128 ==> resize (upsampling)
 input_tensor = Input(shape=(75, 75, 3), dtype='float32', name='input')  # 32,32,3
+# Rescale image (up-sampling) for better performance
+upsampling = tf.keras.layers.UpSampling2D(size=upsampling_size, name='upsampling')(input_tensor)
 
 # conv1
 
