@@ -29,7 +29,7 @@ x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
 # Set the value of hyper-parameters
-learning_rate = 0.0005
+learning_rate = 0.0001
 epochs = 20
 batch_size = 16
 
