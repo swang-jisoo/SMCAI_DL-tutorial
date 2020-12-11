@@ -29,7 +29,7 @@ x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
 # Set the value of hyper-parameters
-learning_rate = 0.0001
+learning_rate = 0.0005
 epochs = 20
 batch_size = 16
 
@@ -44,7 +44,12 @@ input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')  # 32,32,
 
 # conv1
 
-# kernel_initializer:
+# kernel_initializer: a statistical distribution or function to use for initialising the weights
+#   - glorot_uniform: (default) also called Xavier uniform;
+#       Draws samples from a uniform distribution within [-limit, limit], where limit = sqrt(6 / (fan_in + fan_out))
+#       (fan_in is the number of input units in the weight tensor and fan_out is the number of output units).
+#   - he_normal:
+#       Draws samples from a truncated normal distribution centered on 0 with stddev = sqrt(2 / fan_in)
 
 x = ZeroPadding2D(padding=3, name='conv1_pad')(input_tensor)
 x = Conv2D(64, 7, strides=(2, 2),  # stride -> downsampling
@@ -440,5 +445,6 @@ resnet50_module.fit(x_train, y_train, epochs=1)
 
 # Test the model with test set
 resnet50_module.evaluate(x_test, y_test, verbose=2)
-# ==> epoch: 1; loss: 3.0760 - accuracy: 0.4132
+# ==> learning rate: 0.001 (default); epoch: 1; loss: 3.0760 - accuracy: 0.4132
+# ==> learning rate: 0.001 (default); epoch: 20; 
 '''
