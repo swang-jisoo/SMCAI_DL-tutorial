@@ -33,6 +33,8 @@ cifar10 = tf.keras.datasets.cifar10
 # Convert the pixel range from 0(black)-255(white) to 0-1
 # *** vs. layers.experimental.preprocessing.Rescaling(scale=1./255)
 x_train, x_test = x_train / 255.0, x_test / 255.0
+
+# Change the element type from float64 to float32 to reduce computational cost
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
