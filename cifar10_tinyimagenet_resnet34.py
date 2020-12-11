@@ -37,16 +37,17 @@ def block(x, filters, strides=1, shortcut_yn=True, bottleneck_yn=True, name=None
     Returns:
         Output tensor of residual block
     """
-    # Save shortcut
-    if shortcut_yn:
-        # shortcut-residual dimension match (projection shortcut)
-        shortcut = Conv2D(filters * 4, 1, strides=strides, name=name + '_shortcut_conv')(x)
-        shortcut = BatchNormalization(axis=1, name=name + '_shortcut_bn')(shortcut)
-    else:
-        # identity shortcut
-        shortcut = x
 
     if bottleneck_yn:
+        # Save shortcut
+        if shortcut_yn:
+            # shortcut-residual dimension match (projection shortcut)
+            shortcut = Conv2D(filters * 4, 1, strides=strides, name=name + '_shortcut_conv')(x)
+            shortcut = BatchNormalization(axis=1, name=name + '_shortcut_bn')(shortcut)
+        else:
+            # identity shortcut
+            shortcut = x
+
         # 1x1 layer
         conv_1_conv = Conv2D(filters, 1, strides=strides,
                              kernel_initializer='he_normal', name=name + '_1_conv')(x)
@@ -68,22 +69,73 @@ def block(x, filters, strides=1, shortcut_yn=True, bottleneck_yn=True, name=None
         # Combine shortcut and residual results
         conv_add = tf.keras.layers.Add()([shortcut, conv_3_relu])
         conv_out = Activation('relu', name=name + '_out')(conv_add)
+
     else:
-        # first 3x3 layer
-        conv_1_conv = Conv2D(filters, 3, strides=strides,
-                             kernel_initializer='he_normal', name=name + '_1_conv')(x)
-        conv_1_bn = BatchNormalization(axis=1, name=name + '_1_bn')(conv_1_conv)
-        conv_1_relu = Activation('relu', name=name + '_1_relu')(conv_1_bn)
+        if name[4] == '2' or name[-1] != '1':  # for layer < 50, if layer==2 or block!=1, then zero padding
+            # Save shortcut
+            if shortcut_yn:
+                print(x.shape)
+                # shortcut-residual dimension match (projection shortcut)
+                shortcut = Conv2D(filters, 3, padding='SAME', name=name + '_shortcut_conv')(x)
+                shortcut = BatchNormalization(axis=1, name=name + '_shortcut_bn')(shortcut)
+                print('shortcut', name, shortcut.shape)
+            else:
+                # identity shortcut
+                shortcut = x
+                print('no sc', name)
 
-        # second 3x3 layer
-        conv_2_conv = Conv2D(filters, 3, padding='SAME',
-                             kernel_initializer='he_normal', name=name + '_2_conv')(conv_1_relu)
-        conv_2_bn = BatchNormalization(axis=1, name=name + '_2_bn')(conv_2_conv)
-        conv_2_relu = Activation('relu', name=name + '_2_relu')(conv_2_bn)
+            print(strides)
+            # first 3x3 layer
+            conv_1_conv = Conv2D(filters, 3, padding='SAME',
+                                 kernel_initializer='he_normal', name=name + '_1_conv')(x)
+            conv_1_bn = BatchNormalization(axis=1, name=name + '_1_bn')(conv_1_conv)
+            conv_1_relu = Activation('relu', name=name + '_1_relu')(conv_1_bn)
+            print(conv_1_relu.shape)
 
-        # Combine shortcut and residual results
-        conv_add = tf.keras.layers.Add()([shortcut, conv_2_relu])
-        conv_out = Activation('relu', name=name + '_out')(conv_add)
+            # second 3x3 layer
+            conv_2_conv = Conv2D(filters, 3, padding='SAME',
+                                 kernel_initializer='he_normal', name=name + '_2_conv')(conv_1_relu)
+            conv_2_bn = BatchNormalization(axis=1, name=name + '_2_bn')(conv_2_conv)
+            conv_2_relu = Activation('relu', name=name + '_2_relu')(conv_2_bn)
+            print(conv_2_relu.shape)
+
+            # Combine shortcut and residual results
+            conv_add = tf.keras.layers.Add()([shortcut, conv_2_relu])
+            conv_out = Activation('relu', name=name + '_out')(conv_add)
+            print('conv', name)
+
+        else:
+            # Save shortcut
+            if shortcut_yn:
+                print(x.shape)
+                # shortcut-residual dimension match (projection shortcut)
+                shortcut = Conv2D(filters, 3, strides=1, name=name + '_shortcut_conv')(x)
+                shortcut = BatchNormalization(axis=1, name=name + '_shortcut_bn')(shortcut)
+                print('shortcut', name, shortcut.shape)
+            else:
+                # identity shortcut
+                shortcut = x
+                print('no sc', name)
+
+            print(strides)
+            # first 3x3 layer
+            conv_1_conv = Conv2D(filters, 3, strides=1,
+                                 kernel_initializer='he_normal', name=name + '_1_conv')(x)
+            conv_1_bn = BatchNormalization(axis=1, name=name + '_1_bn')(conv_1_conv)
+            conv_1_relu = Activation('relu', name=name + '_1_relu')(conv_1_bn)
+            print(conv_1_relu.shape)
+
+            # second 3x3 layer
+            conv_2_conv = Conv2D(filters, 3, padding='SAME',
+                                 kernel_initializer='he_normal', name=name + '_2_conv')(conv_1_relu)
+            conv_2_bn = BatchNormalization(axis=1, name=name + '_2_bn')(conv_2_conv)
+            conv_2_relu = Activation('relu', name=name + '_2_relu')(conv_2_bn)
+            print(conv_2_relu.shape)
+
+            # Combine shortcut and residual results
+            conv_add = tf.keras.layers.Add()([shortcut, conv_2_relu])
+            conv_out = Activation('relu', name=name + '_out')(conv_add)
+            print('conv', name)
 
     return conv_out
 
@@ -111,7 +163,7 @@ def stacked_block(x, filters, strides=2, blocks=3, bottleneck_yn=True, name=None
                   name=name + '_block1')
     for b in range(2, blocks + 1):
         # Create an identity shortcut in other blocks
-        stack = block(stack, stride, strides=1, shortcut_yn=False, bottleneck_yn=bottleneck_yn,
+        stack = block(stack, filters, strides=1, shortcut_yn=False, bottleneck_yn=bottleneck_yn,
                       name=name + '_block' + str(b))
 
     return stack
@@ -171,6 +223,9 @@ if __name__ == '__main__':
     epochs = 20
     batch_size = 16
 
+    # Results by hyper-parameters
+    # ==> learning rate: 0.0001; epoch: 20; batch size: 16;
+
     # Load cifar10 dataset
     cifar10 = tf.keras.datasets.cifar10
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
@@ -182,6 +237,7 @@ if __name__ == '__main__':
 
     # Create a model
     resnet34 = resnet(filters=[64, 128, 256, 512], blocks=[3, 4, 6, 3], bottleneck_yn=False, name='resnet34')
+    # resnet50 = resnet(filters=[64, 128, 256, 512], blocks=[3, 4, 6, 3], bottleneck_yn=True, name='resnet34')
     resnet34.summary()
 
     # Compile the model
