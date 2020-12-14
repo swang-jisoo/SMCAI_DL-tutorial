@@ -224,7 +224,7 @@ if __name__ == '__main__':
     batch_size = 16
 
     # Results by hyper-parameters
-    # ==> learning rate: 0.0001; epoch: 20; batch size: 16;
+    # ==> learning rate: 0.0001; epoch: 20; batch size: 16; loss: 1.1171 - accuracy: 0.7277
 
     # Load cifar10 dataset
     cifar10 = tf.keras.datasets.cifar10
