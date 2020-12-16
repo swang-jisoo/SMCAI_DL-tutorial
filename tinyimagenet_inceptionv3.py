@@ -37,7 +37,8 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras import Input, Model
-from tensorflow.keras.layers import ZeroPadding2D, Conv2D, Activation, BatchNormalization, MaxPooling2D, GlobalAveragePooling2D, Flatten, Dense
+from tensorflow.keras.layers import ZeroPadding2D, Conv2D, BatchNormalization, Activation, \
+    MaxPooling2D, AveragePooling2D, GlobalAveragePooling2D, Flatten, Dense, concatenate
 
 # Fix the gpu memory issue
 config = tf.compat.v1.ConfigProto()
@@ -81,15 +82,415 @@ valid_generator = valid_datagen.flow_from_dataframe(val_data, directory='./tiny-
 # ==> upsampling: 2; learing rate: 0.0001; epoch: 20; batch size: 16;
 
 # Initiate a ResNet50 architecture
-input_tensor = Input(shape=(64, 64, 3), dtype='float32', name='input')
+input_tensor = Input(shape=(64, 64, 3), dtype='float32', name='input')  # 75,75,3
 # Rescale image (up-sampling) for better performance
 upsampling = tf.keras.layers.UpSampling2D(size=upsampling_size, name='upsampling')(input_tensor)
 
 # conv1
-conv1 = Conv2D(32, 3, strides=(2, 2), name='conv1')(upsampling)
-conv1 = Conv2D(32, 3, padding='SAME', name='conv1')(conv1)
-conv1_bn = BatchNormalization(axis=1, name='conv1_bn')(x)
-x = Conv2D(64, 3, padding='SAME', name='conv1')(conv1_bn)
+conv1_conv = Conv2D(32, 3, strides=(2, 2),
+                    kernel_initializer='he_normal', name='conv1_conv')(upsampling)  # 37,37,32
+conv1_bn = BatchNormalization(axis=1, name='conv1_bn')(conv1_conv)
+conv1_relu = Activation('relu', name='conv1_relu')(conv1_bn)
+
+# conv2_1
+conv2_1conv = Conv2D(32, 3,
+                     kernel_initializer='he_normal', name='conv2_1conv')(conv1_relu)  # 35,35,32
+conv2_1bn = BatchNormalization(axis=1, name='conv2_1bn')(conv2_1conv)
+conv2_1relu = Activation('relu', name='conv2_1relu')(conv2_1bn)
+
+# conv2_2
+conv2_2conv = Conv2D(64, 3, padding='SAME',
+                     kernel_initializer='he_normal', name='conv2_2conv')(conv2_1relu)  # 35,35,64
+conv2_2bn = BatchNormalization(axis=1, name='conv2_2bn')(conv2_2conv)
+conv2_2relu = Activation('relu', name='conv2_2relu')(conv2_2bn)
+
+# maxpool1
+maxpool1 = MaxPooling2D((3, 3), strides=2, name='maxpool1')(conv2_2relu)  # 17,17,64
+
+# conv2_3
+conv2_3conv = Conv2D(80, 1,
+                     kernel_initializer='he_normal', name='conv2_3conv')(maxpool1)  # 17,17,80
+conv2_3bn = BatchNormalization(axis=1, name='conv2_3bn')(conv2_3conv)
+conv2_3relu = Activation('relu', name='conv2_3relu')(conv2_3bn)
+
+# conv2_4
+conv2_4conv = Conv2D(192, 3,
+                     kernel_initializer='he_normal', name='conv2_4conv')(conv2_3relu)  # 15,15,192
+conv2_4bn = BatchNormalization(axis=1, name='conv2_4bn')(conv2_4conv)
+conv2_4relu = Activation('relu', name='conv2_4relu')(conv2_4bn)
+
+# maxpool1
+maxpool2 = MaxPooling2D((3, 3), strides=2, name='maxpool2')(conv2_4relu)  # 7,7,192
+
+# Inception1
+# 1x1
+inception1_1x1conv = Conv2D(64, 1, name='inception1_1x1conv')(maxpool2)  # 7,7,64
+inception1_1x1bn = BatchNormalization(axis=1, name='inception1_1x1bn')(inception1_1x1conv)
+inception1_1x1relu = Activation('relu', name='inception1_1x1relu')(inception1_1x1bn)
+# 1x1-3x3
+# *** 5x5 --> 3x3?
+inception1_3x3conv1 = Conv2D(48, 1, name='inception1_3x3conv1')(maxpool2)  # 7,7,48
+inception1_3x3bn1 = BatchNormalization(axis=1, name='inception1_3x3bn1')(inception1_3x3conv1)
+inception1_3x3relu1 = Activation('relu', name='inception1_3x3relu1')(inception1_3x3bn1)
+inception1_3x3conv2 = Conv2D(64, 3, padding='SAME', name='inception1_3x3conv2')(inception1_3x3relu1)  # 7,7,64
+inception1_3x3bn2 = BatchNormalization(axis=1, name='inception1_3x3bn2')(inception1_3x3conv2)
+inception1_3x3relu2 = Activation('relu', name='inception1_3x3relu2')(inception1_3x3bn2)
+# 1x1-3x3-3x3
+inception1_5x5conv1 = Conv2D(48, 1, name='inception1_5x5conv1')(maxpool2)  # 7,7,48
+inception1_5x5bn1 = BatchNormalization(axis=1, name='inception1_5x5bn1')(inception1_5x5conv1)
+inception1_5x5relu1 = Activation('relu', name='inception1_5x5relu1')(inception1_5x5bn1)
+inception1_5x5conv2 = Conv2D(64, 3, padding='SAME', name='inception1_5x5conv2')(inception1_5x5relu1)  # 7,7,64
+inception1_5x5bn2 = BatchNormalization(axis=1, name='inception1_5x5bn2')(inception1_5x5conv2)
+inception1_5x5relu2 = Activation('relu', name='inception1_5x5relu2')(inception1_5x5bn2)
+inception1_5x5conv3 = Conv2D(64, 3, padding='SAME', name='inception1_5x5conv3')(inception1_5x5relu2)  # 7,7,64
+inception1_5x5bn3 = BatchNormalization(axis=1, name='inception1_5x5bn3')(inception1_5x5conv3)
+inception1_5x5relu3 = Activation('relu', name='inception1_5x5relu3')(inception1_5x5bn3)
+# avgpool
+inception1_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                      name='inception1_avgpool')(maxpool2)  # 7,7,192
+inception1_avgpool_conv = Conv2D(64, 1, name='inception1_avgpool_conv')(inception1_avgpool)  # 7,7,48
+inception1_avgpool_bn = BatchNormalization(axis=1, name='inception1_avgpool_bn')(inception1_avgpool_conv)
+inception1_avgpool_relu = Activation('relu', name='inception1_avgpool_relu')(inception1_avgpool_bn)
+
+inception1_concat = concatenate([inception1_1x1relu, inception1_3x3relu2, inception1_5x5relu3, inception1_avgpool_relu],
+                                axis=-1, name='inception1_concat')  # 7,7,256 (64*4)
+
+# inception2
+# 1x1
+inception2_1x1conv = Conv2D(64, 1, name='inception2_1x1conv')(inception1_concat)  # 7,7,64
+inception2_1x1bn = BatchNormalization(axis=1, name='inception2_1x1bn')(inception2_1x1conv)
+inception2_1x1relu = Activation('relu', name='inception2_1x1relu')(inception2_1x1bn)
+# 1x1-3x3
+inception2_3x3conv1 = Conv2D(48, 1, name='inception2_3x3conv1')(inception1_concat)  # 7,7,48
+inception2_3x3bn1 = BatchNormalization(axis=1, name='inception2_3x3bn1')(inception2_3x3conv1)
+inception2_3x3relu1 = Activation('relu', name='inception2_3x3relu1')(inception2_3x3bn1)
+inception2_3x3conv2 = Conv2D(64, 3, padding='SAME', name='inception2_3x3conv2')(inception2_3x3relu1)  # 7,7,64
+inception2_3x3bn2 = BatchNormalization(axis=1, name='inception2_3x3bn2')(inception2_3x3conv2)
+inception2_3x3relu2 = Activation('relu', name='inception2_3x3relu2')(inception2_3x3bn2)
+# 1x1-3x3-3x3
+inception2_5x5conv1 = Conv2D(48, 1, name='inception2_5x5conv1')(inception1_concat)  # 7,7,48
+inception2_5x5bn1 = BatchNormalization(axis=1, name='inception2_5x5bn1')(inception2_5x5conv1)
+inception2_5x5relu1 = Activation('relu', name='inception2_5x5relu1')(inception2_5x5bn1)
+inception2_5x5conv2 = Conv2D(64, 3, padding='SAME', name='inception2_5x5conv2')(inception2_5x5relu1)  # 7,7,64
+inception2_5x5bn2 = BatchNormalization(axis=1, name='inception2_5x5bn2')(inception2_5x5conv2)
+inception2_5x5relu2 = Activation('relu', name='inception2_5x5relu2')(inception2_5x5bn2)
+inception2_5x5conv3 = Conv2D(64, 3, padding='SAME', name='inception2_5x5conv3')(inception2_5x5relu2)  # 7,7,64
+inception2_5x5bn3 = BatchNormalization(axis=1, name='inception2_5x5bn3')(inception2_5x5conv3)
+inception2_5x5relu3 = Activation('relu', name='inception2_5x5relu3')(inception2_5x5bn3)
+# avgpool
+inception2_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                      name='inception2_avgpool')(inception1_concat)  # 7,7,256
+inception2_avgpool_conv = Conv2D(64, 1, name='inception2_avgpool_conv')(inception2_avgpool)  # 7,7,64
+inception2_avgpool_bn = BatchNormalization(axis=1, name='inception2_avgpool_bn')(inception2_avgpool_conv)
+inception2_avgpool_relu = Activation('relu', name='inception2_avgpool_relu')(inception2_avgpool_bn)
+
+inception2_concat = concatenate([inception2_1x1relu, inception2_3x3relu2, inception2_5x5relu3, inception2_avgpool_relu],
+                                axis=-1, name='inception2_concat')  # 7,7,256 (64*4)
+
+# inception3
+# different structure compared to inception2
+# 1x1
+# *** dimension value
+inception3_1x1conv = Conv2D(384, 3, strides=(2, 2), name='inception3_1x1conv')(inception2_concat)  # 3,3,384
+inception3_1x1bn = BatchNormalization(axis=1, name='inception3_1x1bn')(inception3_1x1conv)
+inception3_1x1relu = Activation('relu', name='inception3_1x1relu')(inception3_1x1bn)
+# 1x1-3x3-3x3
+inception3_5x5conv1 = Conv2D(64, 1, name='inception3_5x5conv1')(inception2_concat)  # 7,7,64
+inception3_5x5bn1 = BatchNormalization(axis=1, name='inception3_5x5bn1')(inception3_5x5conv1)
+inception3_5x5relu1 = Activation('relu', name='inception3_5x5relu1')(inception3_5x5bn1)
+inception3_5x5conv2 = Conv2D(96, 3, padding='SAME', name='inception3_5x5conv2')(inception3_5x5relu1)  # 7,7,96
+inception3_5x5bn2 = BatchNormalization(axis=1, name='inception3_5x5bn2')(inception3_5x5conv2)
+inception3_5x5relu2 = Activation('relu', name='inception3_5x5relu2')(inception3_5x5bn2)
+inception3_5x5conv3 = Conv2D(96, 3, strides=(2, 2), name='inception3_5x5conv3')(inception3_5x5relu2)  # 3,3,96
+inception3_5x5bn3 = BatchNormalization(axis=1, name='inception3_5x5bn3')(inception3_5x5conv3)
+inception3_5x5relu3 = Activation('relu', name='inception3_5x5relu3')(inception3_5x5bn3)
+# avgpool
+# *** avg pool --> max pool
+inception3_maxpool = MaxPooling2D((3, 3), strides=(2, 2),
+                                  name='inception3_maxpool')(inception2_concat)  # 3,3,256
+# *** no conv
+
+inception3_concat = concatenate([inception3_1x1relu, inception3_5x5relu3, inception3_maxpool],
+                                axis=-1, name='inception3_concat')  # 3,3,736 (384+96+256)
+
+# inception4
+# 1x1
+inception4_1x1conv = Conv2D(192, 1, name='inception4_1x1conv')(inception3_concat)  # 3,3,192
+inception4_1x1bn = BatchNormalization(axis=1, name='inception4_1x1bn')(inception4_1x1conv)
+inception4_1x1relu = Activation('relu', name='inception4_1x1relu')(inception4_1x1bn)
+# 1x1-1x7-7x1
+inception4_1771conv1 = Conv2D(128, 1, name='inception4_1771conv1')(inception3_concat)  # 3,3,128
+inception4_1771bn1 = BatchNormalization(axis=1, name='inception4_1771bn1')(inception4_1771conv1)
+inception4_1771relu1 = Activation('relu', name='inception4_1771relu1')(inception4_1771bn1)
+inception4_1771conv2 = Conv2D(128, (1, 7), padding='SAME', name='inception4_1771conv2')(inception4_1771relu1)  # 3,3,128
+inception4_1771bn2 = BatchNormalization(axis=1, name='inception4_1771bn2')(inception4_1771conv2)
+inception4_1771relu2 = Activation('relu', name='inception4_1771relu2')(inception4_1771bn2)
+inception4_1771conv3 = Conv2D(192, (7, 1), padding='SAME', name='inception4_1771conv3')(inception4_1771relu2)  # 3,3,192
+inception4_1771bn3 = BatchNormalization(axis=1, name='inception4_1771bn3')(inception4_1771conv3)
+inception4_1771relu3 = Activation('relu', name='inception4_1771relu3')(inception4_1771bn3)
+# 1x1-7x1-1x7-7x1-1x7
+inception4_7117conv1 = Conv2D(128, 1, name='inception4_7117conv1')(inception3_concat)  # 3,3,128
+inception4_7117bn1 = BatchNormalization(axis=1, name='inception4_7117bn1')(inception4_7117conv1)
+inception4_7117relu1 = Activation('relu', name='inception4_7117relu1')(inception4_7117bn1)
+inception4_7117conv2 = Conv2D(128, (7, 1), padding='SAME', name='inception4_7117conv2')(inception4_7117relu1)  # 3,3,128
+inception4_7117bn2 = BatchNormalization(axis=1, name='inception4_7117bn2')(inception4_7117conv2)
+inception4_7117relu2 = Activation('relu', name='inception4_7117relu2')(inception4_7117bn2)
+inception4_7117conv3 = Conv2D(128, (1, 7), padding='SAME', name='inception4_7117conv3')(inception4_7117relu2)  # 3,3,128
+inception4_7117bn3 = BatchNormalization(axis=1, name='inception4_7117bn3')(inception4_7117conv3)
+inception4_7117relu3 = Activation('relu', name='inception4_7117relu3')(inception4_7117bn3)
+inception4_7117conv4 = Conv2D(128, (7, 1), padding='SAME', name='inception4_7117conv4')(inception4_7117relu3)  # 3,3,128
+inception4_7117bn4 = BatchNormalization(axis=1, name='inception4_7117bn4')(inception4_7117conv4)
+inception4_7117relu4 = Activation('relu', name='inception4_7117relu4')(inception4_7117bn4)
+inception4_7117conv5 = Conv2D(192, (1, 7), padding='SAME', name='inception4_7117conv5')(inception4_7117relu4)  # 3,3,192
+inception4_7117bn5 = BatchNormalization(axis=1, name='inception4_7117bn5')(inception4_7117conv5)
+inception4_7117relu5 = Activation('relu', name='inception4_7117relu5')(inception4_7117bn5)
+# avgpool
+inception4_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                      name='inception4_avgpool')(inception3_concat)  # 3,3,736
+inception4_avgpool_conv = Conv2D(192, 1, name='inception4_avgpool_conv')(inception4_avgpool)  # 3,3,192
+inception4_avgpool_bn = BatchNormalization(axis=1, name='inception4_avgpool_bn')(inception4_avgpool_conv)
+inception4_avgpool_relu = Activation('relu', name='inception4_avgpool_relu')(inception4_avgpool_bn)
+
+inception4_concat = concatenate([inception4_1x1relu, inception4_1771relu3,
+                                 inception4_7117relu5, inception4_avgpool_relu],
+                                axis=-1, name='inception4_concat')  # 3,3,768 (192*4)
+
+x = inception4_concat
+# inception5, 6
+for r in range(5, 7):
+    i = str(r)
+    # 1x1
+    inception5_1x1conv = Conv2D(192, 1,
+                                name='inception'+i+'_1x1conv')(x)  # 3,3,192
+    inception5_1x1bn = BatchNormalization(axis=1,
+                                          name='inception'+i+'_1x1bn')(inception5_1x1conv)
+    inception5_1x1relu = Activation('relu',
+                                    name='inception'+i+'_1x1relu')(inception5_1x1bn)
+    # 1x1-1x7-7x1
+    inception5_1771conv1 = Conv2D(160, 1,
+                                  name='inception'+i+'_1771conv1')(x)  # 3,3,160
+    inception5_1771bn1 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_1771bn1')(inception5_1771conv1)
+    inception5_1771relu1 = Activation('relu',
+                                      name='inception'+i+'_1771relu1')(inception5_1771bn1)
+    inception5_1771conv2 = Conv2D(160, (1, 7), padding='SAME',
+                                  name='inception'+i+'_1771conv2')(inception5_1771relu1)  # 3,3,160
+    inception5_1771bn2 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_1771bn2')(inception5_1771conv2)
+    inception5_1771relu2 = Activation('relu', name='inception'+i+'_1771relu2')(inception5_1771bn2)
+    inception5_1771conv3 = Conv2D(192, (7, 1), padding='SAME',
+                                  name='inception'+i+'_1771conv3')(inception5_1771relu2)  # 3,3,192
+    inception5_1771bn3 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_1771bn3')(inception5_1771conv3)
+    inception5_1771relu3 = Activation('relu',
+                                      name='inception'+i+'_1771relu3')(inception5_1771bn3)
+    # 1x1-7x1-1x7-7x1-1x7
+    inception5_7117conv1 = Conv2D(160, 1,
+                                  name='inception'+i+'_7117conv1')(x)  # 3,3,160
+    inception5_7117bn1 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_7117bn1')(inception5_7117conv1)
+    inception5_7117relu1 = Activation('relu',
+                                      name='inception'+i+'_7117relu1')(inception5_7117bn1)
+    inception5_7117conv2 = Conv2D(160, (7, 1), padding='SAME',
+                                  name='inception'+i+'_7117conv2')(inception5_7117relu1)  # 3,3,160
+    inception5_7117bn2 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_7117bn2')(inception5_7117conv2)
+    inception5_7117relu2 = Activation('relu',
+                                      name='inception'+i+'_7117relu2')(inception5_7117bn2)
+    inception5_7117conv3 = Conv2D(160, (1, 7), padding='SAME',
+                                  name='inception'+i+'_7117conv3')(inception5_7117relu2)  # 3,3,160
+    inception5_7117bn3 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_7117bn3')(inception5_7117conv3)
+    inception5_7117relu3 = Activation('relu',
+                                      name='inception'+i+'_7117relu3')(inception5_7117bn3)
+    inception5_7117conv4 = Conv2D(160, (7, 1), padding='SAME',
+                                  name='inception'+i+'_7117conv4')(inception5_7117relu3)  # 3,3,160
+    inception5_7117bn4 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_7117bn4')(inception5_7117conv4)
+    inception5_7117relu4 = Activation('relu',
+                                      name='inception'+i+'_7117relu4')(inception5_7117bn4)
+    inception5_7117conv5 = Conv2D(192, (1, 7), padding='SAME',
+                                  name='inception'+i+'_7117conv5')(inception5_7117relu4)  # 3,3,192
+    inception5_7117bn5 = BatchNormalization(axis=1,
+                                            name='inception'+i+'_7117bn5')(inception5_7117conv5)
+    inception5_7117relu5 = Activation('relu',
+                                      name='inception'+i+'_7117relu5')(inception5_7117bn5)
+    # avgpool
+    inception5_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                          name='inception'+i+'_avgpool')(x)  # 3,3,768
+    inception5_avgpool_conv = Conv2D(192, 1,
+                                     name='inception'+i+'_avgpool_conv')(inception5_avgpool)  # 3,3,192
+    inception5_avgpool_bn = BatchNormalization(axis=1,
+                                               name='inception'+i+'_avgpool_bn')(inception5_avgpool_conv)
+    inception5_avgpool_relu = Activation('relu',
+                                         name='inception'+i+'_avgpool_relu')(inception5_avgpool_bn)
+
+    x = concatenate([inception5_1x1relu, inception5_1771relu3, inception5_7117relu5, inception5_avgpool_relu],
+                    axis=-1, name='inception'+i+'_concat')  # 3,3,768 (192*4)
+inception6_concat = x
+
+# inception7
+# 1x1
+inception7_1x1conv = Conv2D(192, 1, name='inception7_1x1conv')(inception6_concat)  # 3,3,192
+inception7_1x1bn = BatchNormalization(axis=1, name='inception7_1x1bn')(inception7_1x1conv)
+inception7_1x1relu = Activation('relu', name='inception7_1x1relu')(inception7_1x1bn)
+# 1x1-1x7-7x1
+inception7_1771conv1 = Conv2D(192, 1, name='inception7_1771conv1')(inception6_concat)  # 3,3,192
+inception7_1771bn1 = BatchNormalization(axis=1, name='inception7_1771bn1')(inception7_1771conv1)
+inception7_1771relu1 = Activation('relu', name='inception7_1771relu1')(inception7_1771bn1)
+inception7_1771conv2 = Conv2D(192, (1, 7), padding='SAME', name='inception7_1771conv2')(inception7_1771relu1)  # 3,3,192
+inception7_1771bn2 = BatchNormalization(axis=1, name='inception7_1771bn2')(inception7_1771conv2)
+inception7_1771relu2 = Activation('relu', name='inception7_1771relu2')(inception7_1771bn2)
+inception7_1771conv3 = Conv2D(192, (7, 1), padding='SAME', name='inception7_1771conv3')(inception7_1771relu2)  # 3,3,192
+inception7_1771bn3 = BatchNormalization(axis=1, name='inception7_1771bn3')(inception7_1771conv3)
+inception7_1771relu3 = Activation('relu', name='inception7_1771relu3')(inception7_1771bn3)
+# 1x1-7x1-1x7-7x1-1x7
+inception7_7117conv1 = Conv2D(192, 1, name='inception7_7117conv1')(inception6_concat)  # 3,3,192
+inception7_7117bn1 = BatchNormalization(axis=1, name='inception7_7117bn1')(inception7_7117conv1)
+inception7_7117relu1 = Activation('relu', name='inception7_7117relu1')(inception7_7117bn1)
+inception7_7117conv2 = Conv2D(192, (7, 1), padding='SAME', name='inception7_7117conv2')(inception7_7117relu1)  # 3,3,192
+inception7_7117bn2 = BatchNormalization(axis=1, name='inception7_7117bn2')(inception7_7117conv2)
+inception7_7117relu2 = Activation('relu', name='inception7_7117relu2')(inception7_7117bn2)
+inception7_7117conv3 = Conv2D(192, (1, 7), padding='SAME', name='inception7_7117conv3')(inception7_7117relu2)  # 3,3,192
+inception7_7117bn3 = BatchNormalization(axis=1, name='inception7_7117bn3')(inception7_7117conv3)
+inception7_7117relu3 = Activation('relu', name='inception7_7117relu3')(inception7_7117bn3)
+inception7_7117conv4 = Conv2D(192, (7, 1), padding='SAME', name='inception7_7117conv4')(inception7_7117relu3)  # 3,3,192
+inception7_7117bn4 = BatchNormalization(axis=1, name='inception7_7117bn4')(inception7_7117conv4)
+inception7_7117relu4 = Activation('relu', name='inception7_7117relu4')(inception7_7117bn4)
+inception7_7117conv5 = Conv2D(192, (1, 7), padding='SAME', name='inception7_7117conv5')(inception7_7117relu4)  # 3,3,192
+inception7_7117bn5 = BatchNormalization(axis=1, name='inception7_7117bn5')(inception7_7117conv5)
+inception7_7117relu5 = Activation('relu', name='inception7_7117relu5')(inception7_7117bn5)
+# avgpool
+inception7_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                      name='inception7_avgpool')(inception6_concat)  # 3,3,768
+inception7_avgpool_conv = Conv2D(192, 1, name='inception7_avgpool_conv')(inception7_avgpool)  # 3,3,192
+inception7_avgpool_bn = BatchNormalization(axis=1, name='inception7_avgpool_bn')(inception7_avgpool_conv)
+inception7_avgpool_relu = Activation('relu', name='inception7_avgpool_relu')(inception7_avgpool_bn)
+
+inception7_cocat = concatenate([inception7_1x1relu, inception7_1771relu3,
+                                inception7_7117relu5, inception7_avgpool_relu],
+                               axis=-1, name='inception7_cocat')  # 3,3,768 (192*4)
+
+# inception8
+# 1x1-3x3
+inception8_3x3conv1 = Conv2D(192, 1, name='inception8_3x3conv1')(inception7_cocat)  # 3,3,192
+inception8_3x3bn1 = BatchNormalization(axis=1, name='inception8_3x3bn1')(inception8_3x3conv1)
+inception8_3x3relu1 = Activation('relu', name='inception8_3x3relu1')(inception8_3x3bn1)
+inception8_3x3conv2 = Conv2D(320, 3, strides=(2, 2), name='inception8_3x3conv2')(inception8_3x3relu1)  # 1,1,320
+inception8_3x3bn2 = BatchNormalization(axis=1, name='inception8_3x3bn2')(inception8_3x3conv2)
+inception8_3x3relu2 = Activation('relu', name='inception8_3x3relu2')(inception8_3x3bn2)
+# 1x1-1x7-7x1
+inception8_1771conv1 = Conv2D(192, 1, name='inception8_1771conv1')(inception7_cocat)  # 3,3,192
+inception8_1771bn1 = BatchNormalization(axis=1, name='inception8_1771bn1')(inception8_1771conv1)
+inception8_1771relu1 = Activation('relu', name='inception8_1771relu1')(inception8_1771bn1)
+inception8_1771conv2 = Conv2D(192, (1, 7), padding='SAME', name='inception8_1771conv2')(inception8_1771relu1)  # 3,3,192
+inception8_1771bn2 = BatchNormalization(axis=1, name='inception8_1771bn2')(inception8_1771conv2)
+inception8_1771relu2 = Activation('relu', name='inception8_1771relu2')(inception8_1771bn2)
+inception8_1771conv3 = Conv2D(192, (7, 1), padding='SAME', name='inception8_1771conv3')(inception8_1771relu2)  # 3,3,192
+inception8_1771bn3 = BatchNormalization(axis=1, name='inception8_1771bn3')(inception8_1771conv3)
+inception8_1771relu3 = Activation('relu', name='inception8_1771relu3')(inception8_1771bn3)
+inception8_1771conv4 = Conv2D(192, 3, strides=(2, 2), name='inception8_1771conv4')(inception8_1771relu3)  # 1,1,192
+inception8_1771bn4 = BatchNormalization(axis=1, name='inception8_1771bn4')(inception8_1771conv4)
+inception8_1771relu4 = Activation('relu', name='inception8_1771relu4')(inception8_1771bn4)
+# avgpool
+inception8_maxpool = MaxPooling2D((3, 3), strides=(2, 2),
+                                  name='inception8_maxpool')(inception7_cocat)  # 1,1,768
+
+inception8_concat = concatenate([inception8_3x3relu2, inception8_1771relu4, inception8_maxpool],
+                                axis=-1, name='inception8_concat')  # 1,1,1280 (320+192+768)
+
+x = inception8_concat
+# inception9. 10
+for r in range(9, 11):
+    i = str(r)
+    # 1x1
+    inception9_1x1conv = Conv2D(320, 1, name='inception' + i + '_1x1conv')(x)  # 1,1,320
+    inception9_1x1bn = BatchNormalization(axis=1, name='inception' + i + '_1x1bn')(inception9_1x1conv)
+    inception9_1x1relu = Activation('relu', name='inception' + i + '_1x1relu')(inception9_1x1bn)
+
+    # 1x1-1x3-3x1-concat
+    inception9_1331conv1 = Conv2D(384, 1,
+                                  name='inception' + i + '_1331conv1')(x)  # 1,1,384
+    inception9_1331bn1 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_1331bn1')(inception9_1331conv1)
+    inception9_1331relu1 = Activation('relu',
+                                      name='inception' + i + '_1331relu1')(inception9_1331bn1)
+    inception9_1331conv2 = Conv2D(384, (1, 3), padding='SAME',
+                                  name='inception' + i + '_1331conv2')(inception9_1331relu1)  # 1,1,384
+    inception9_1331bn2 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_1331bn2')(inception9_1331conv2)
+    inception9_1331relu2 = Activation('relu',
+                                      name='inception' + i + '_1331relu2')(inception9_1331bn2)
+    inception9_1331conv3 = Conv2D(384, (3, 1), padding='SAME',
+                                  name='inception' + i + '_1331conv3')(inception9_1331relu1)  # 1,1,384
+    inception9_1331bn3 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_1331bn3')(inception9_1331conv3)
+    inception9_1331relu3 = Activation('relu',
+                                      name='inception' + i + '_1331relu3')(inception9_1331bn3)
+    inception9_1331concat = concatenate([inception9_1331relu2, inception9_1331relu3],
+                                        axis=-1, name='inception' + i + '_1331concat')  # 1,1,768 (384*2)
+
+    # 1x1-1x3-3x1-concat
+    inception9_331331conv1 = Conv2D(448, 1,
+                                  name='inception' + i + '_331331conv1')(x)  # 1,1,448
+    inception9_331331bn1 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_331331bn1')(inception9_331331conv1)
+    inception9_331331relu1 = Activation('relu',
+                                      name='inception' + i + '_331331relu1')(inception9_331331bn1)
+    inception9_331331conv2 = Conv2D(384, 3, padding='SAME',
+                                  name='inception' + i + '_331331conv2')(inception9_331331relu1)  # 1,1,384
+    inception9_331331bn2 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_331331bn2')(inception9_331331conv2)
+    inception9_331331relu2 = Activation('relu',
+                                      name='inception' + i + '_331331relu2')(inception9_331331bn2)
+    inception9_331331conv3 = Conv2D(384, (1, 3), padding='SAME',
+                                  name='inception' + i + '_331331conv3')(inception9_331331relu2)  # 1,1,384
+    inception9_331331bn3 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_331331bn3')(inception9_331331conv3)
+    inception9_331331relu3 = Activation('relu',
+                                      name='inception' + i + '_331331relu3')(inception9_331331bn3)
+    inception9_331331conv4 = Conv2D(384, (3, 1), padding='SAME',
+                                  name='inception' + i + '_331331conv4')(inception9_331331relu2)  # 1,1,384
+    inception9_331331bn4 = BatchNormalization(axis=1,
+                                            name='inception' + i + '_331331bn4')(inception9_331331conv4)
+    inception9_331331relu4 = Activation('relu',
+                                      name='inception' + i + '_331331relu4')(inception9_331331bn4)
+    inception9_331331concat = concatenate([inception9_331331relu3, inception9_331331relu4],
+                                        axis=-1, name='inception' + i + '_331331concat')  # 1,1,768 (384*2)
+
+    # avgpool
+    inception9_avgpool = AveragePooling2D((3, 3), strides=(1, 1), padding='SAME',
+                                          name='inception' + i + '_avgpool')(x)  # 1,1,1280
+    inception9_avgpool_conv = Conv2D(192, 1,
+                                     name='inception' + i + '_avgpool_conv')(inception9_avgpool)  # 1,1,192
+    inception9_avgpool_bn = BatchNormalization(axis=1,
+                                               name='inception' + i + '_avgpool_bn')(inception9_avgpool_conv)
+    inception9_avgpool_relu = Activation('relu',
+                                         name='inception' + i + '_avgpool_relu')(inception9_avgpool_bn)
+
+    x = concatenate([inception9_1x1relu, inception9_1331concat, inception9_331331concat, inception9_avgpool_relu],
+                    axis=-1, name='inception' + i + '_concat')  # 1,1,2048 (320+768+768+192)
+inception10_concat = x
+
+# FC
+avgpool = GlobalAveragePooling2D(name='avgpool')(inception10_concat)
+output_tensor = Dense(10, activation='softmax', name='output')(avgpool)
+
+# Create a model
+inceptionv3 = Model(input_tensor, output_tensor, name='inceptionv3')
+inceptionv3.summary()
+
+# Compile the model
+opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+inceptionv3.compile(loss='sparse_categorical_crossentropy',
+                 optimizer=opt,
+                 metrics=['accuracy'])
+
+# Train the model to adjust parameters to minimize the loss
+inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+
+# Test the model with test set
+inceptionv3.evaluate(x_test, y_test, verbose=2)
 
 '''
 # tf.keras module
