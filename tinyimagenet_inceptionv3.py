@@ -63,17 +63,17 @@ batch_size = 16
 
 path = 'C:/wgetdown/tiny-imagenet-200'
 
-val_data = pd.read_csv('./tiny-imagenet-200/val/val_annotations.txt', sep='\t', header=None,
+val_data = pd.read_csv(path+'/tiny-imagenet-200/val/val_annotations.txt', sep='\t', header=None,
                        names=['File', 'Class', 'X', 'Y', 'H', 'W'])
 val_data.drop(['X', 'Y', 'H', 'W'], axis=1, inplace=True)
 
 train_datagen = ImageDataGenerator(rescale=1./255)
 valid_datagen = ImageDataGenerator(rescale=1./255)
 
-train_generator = train_datagen.flow_from_directory(r'./tiny-imagenet-200/train/', target_size=(64, 64),
+train_generator = train_datagen.flow_from_directory(path+'/tiny-imagenet-200/train/', target_size=(64, 64),
                                                     color_mode='rgb', class_mode='categorical',
                                                     batch_size=batch_size, shuffle=True, seed=42)
-valid_generator = valid_datagen.flow_from_dataframe(val_data, directory='./tiny-imagenet-200/val/images/',
+valid_generator = valid_datagen.flow_from_dataframe(val_data, directory=path+'/tiny-imagenet-200/val/images/',
                                                     x_col='File', y_col='Class', target_size=(64, 64),
                                                     color_mode='rgb', class_mode='categorical',
                                                     batch_size=batch_size, shuffle=True, seed=42)
@@ -487,10 +487,10 @@ inceptionv3.compile(loss='sparse_categorical_crossentropy',
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+inceptionv3.fit(train_generator, batch_size=batch_size, epochs=epochs)  # x_train, y_train, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
-inceptionv3.evaluate(x_test, y_test, verbose=2)
+inceptionv3.evaluate(valid_generator, verbose=2)  # x_test, y_test, verbose=2)
 
 '''
 # tf.keras module
