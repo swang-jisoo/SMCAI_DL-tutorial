@@ -1,5 +1,7 @@
 #####
-# dataset: tinyImageNet
+# dataset:
+# 1) CIFAR-10
+# 2) tinyImageNet
 # All images are of size 64×64; 200 image classes
 # Training = 100,000 images; Validation = 10,000 images; Test = 10,000 images.
 
@@ -33,6 +35,8 @@
 # RMSProp Optimizer; Factorized 7x7 convolutions; BatchNorm in the Auxillary Classifiers; Label Smoothing
 
 # Import necessary libraries
+import numpy as np
+from keras.callbacks import ReduceLROnPlateau
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -46,12 +50,21 @@ config.gpu_options.per_process_gpu_memory_fraction = 0.3  # <=0.3 with GTX 1050 
 session = tf.compat.v1.Session(config=config)
 
 # Set the value of hyper-parameters
-upsampling_size = (2, 2)
+upsampling_size = (3, 3)
 learning_rate = 0.0001
 epochs = 20
 batch_size = 16
 
-# Load tiny imangenet dataset
+# Load cifar10 dataset
+cifar10 = tf.keras.datasets.cifar10
+(x_train, y_train), (x_test, y_test) = cifar10.load_data()
+
+# Normalize the dataset
+x_train, x_test = x_train / 255.0, x_test / 255.0
+x_train = x_train.astype("float32")
+x_test = x_test.astype("float32")
+
+# Load tiny imagenet dataset
 
 # To download the imagenet, you may need to install wget and unzip first.
 # For installation, check here:
@@ -61,6 +74,7 @@ batch_size = 16
 # wget http://cs231n.stanford.edu/tiny-imagenet-200.zip
 # unzip -qq 'tiny-imagenet-200.zip'
 
+'''
 path = 'C:/wgetdown/tiny-imagenet-200'
 
 val_data = pd.read_csv(path+'/tiny-imagenet-200/val/val_annotations.txt', sep='\t', header=None,
@@ -77,12 +91,13 @@ valid_generator = valid_datagen.flow_from_dataframe(val_data, directory=path+'/t
                                                     x_col='File', y_col='Class', target_size=(64, 64),
                                                     color_mode='rgb', class_mode='categorical',
                                                     batch_size=batch_size, shuffle=True, seed=42)
+'''
 
 # Results by hyper-parameters
 # ==> upsampling: 2; learing rate: 0.0001; epoch: 20; batch size: 16;
 
 # Initiate a ResNet50 architecture
-input_tensor = Input(shape=(64, 64, 3), dtype='float32', name='input')  # 75,75,3
+input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')  # 75,75,3
 # Rescale image (up-sampling) for better performance
 upsampling = tf.keras.layers.UpSampling2D(size=upsampling_size, name='upsampling')(input_tensor)
 
@@ -474,7 +489,7 @@ inception10_concat = x
 
 # FC
 avgpool = GlobalAveragePooling2D(name='avgpool')(inception10_concat)
-output_tensor = Dense(10, activation='softmax', name='output')(avgpool)
+output_tensor = Dense(200, activation='softmax', name='output')(avgpool)
 
 # Create a model
 inceptionv3 = Model(input_tensor, output_tensor, name='inceptionv3')
@@ -487,7 +502,7 @@ inceptionv3.compile(loss='sparse_categorical_crossentropy',
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-inceptionv3.fit(train_generator, batch_size=batch_size, epochs=epochs)  # x_train, y_train, batch_size=batch_size, epochs=epochs)
+inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)  # train_generator, batch_size=batch_size, epochs=epochs)  #
 
 # Test the model with test set
 inceptionv3.evaluate(valid_generator, verbose=2)  # x_test, y_test, verbose=2)
