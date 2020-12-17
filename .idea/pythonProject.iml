@@ -2,7 +2,7 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$USER_HOME$/anaconda3/envs/soo" />
-    <orderEntry type="jdk" jdkName="Python 3.8 (soo)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.8 (base)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>
