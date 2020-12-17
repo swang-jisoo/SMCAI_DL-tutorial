@@ -505,7 +505,7 @@ inceptionv3.compile(loss='sparse_categorical_crossentropy',
 inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)  # train_generator, batch_size=batch_size, epochs=epochs)  #
 
 # Test the model with test set
-inceptionv3.evaluate(valid_generator, verbose=2)  # x_test, y_test, verbose=2)
+inceptionv3.evaluate(x_test, y_test, verbose=2)  # valid_generator, verbose=2)  #
 
 '''
 # tf.keras module
