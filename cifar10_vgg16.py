@@ -38,9 +38,18 @@ x_train, x_test = x_train / 255.0, x_test / 255.0
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
 
+# Convert scalar (0-9) to one-hot encoding
+# tf.one_hot(indices, depth):
+#     e.g. [[0],[1],[2]] --> [[[1,0,0],[0,1,0],[0,0,1]]]
+# tf.squeeze(input, axis=1): Removes dimensions of size 1 from the shape of a tensor.
+#     e.g. [[[1,0,0],[0,1,0],[0,0,1]]] (shape=1,3,3) --> [[1,0,0],[0,1,0],[0,0,1]] (shape=3,3)
+y_train_onehot = tf.squeeze(tf.one_hot(y_train, 10), axis=1)
+y_test_onehot = tf.squeeze(tf.one_hot(y_test, 10), axis=1)
+
 # Set the value of hyper-parameters
-epochs = 30
+epochs = 20
 learning_rate = 0.0001
+batch_size = 16
 # upsampling_size = (2,2)
 
 # Results by hyper-parameters
@@ -49,6 +58,7 @@ learning_rate = 0.0001
 # ==> learning rate: 0.00005; Epoch: 20; loss: 1.2411 - accuracy: 0.7474
 # ==> learning rate: 0.0001; Epoch: 30; loss: 1.2150 - accuracy: 0.7998
 # ==> learning rate: 0.0001; Epoch: 30; up-sampling: 2,2; loss: 0.9695 - accuracy: 0.8239
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16;
 
 # Initiate a VGG16 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
@@ -158,13 +168,13 @@ vgg16.summary()  # plot the model architecture with the number of parameters (co
 # Accuracy: the proportion of true results among the total number of cases examined
 
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)  # lower learning rate, better performance
-vgg16.compile(loss='sparse_categorical_crossentropy',
+vgg16.compile(loss='categorical_crossentropy',  # 'sparse_categorical_crossentropy',
               optimizer=optimizer,
               metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
 # Epoch: running the entire dataset
-vgg16.fit(x_train, y_train, epochs=epochs)
+vgg16.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=epochs)
 
 # Predict the model with test set
 # model.evaluate(x, y): Returns the loss value & metrics values for the model in test mode.
@@ -172,7 +182,7 @@ vgg16.fit(x_train, y_train, epochs=epochs)
 # The both methods use the same interpretation rules, but as the explanation indicates, model.evaluate() uses for
 # validation, while model.predict() uses for prediction. Here, model.evaluate() is used to check the loss and
 # accuracy easily.
-vgg16.evaluate(x_test, y_test, verbose=2)
+vgg16.evaluate(x_test, y_test_onehot, verbose=2)
 
 '''
 # Build comparable vgg16 model with existing module

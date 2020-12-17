@@ -32,6 +32,8 @@ cifar10 = tf.keras.datasets.cifar10
 x_train, x_test = x_train / 255.0, x_test / 255.0
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
+y_train_onehot = tf.squeeze(tf.one_hot(y_train, 10), axis=1)
+y_test_onehot = tf.squeeze(tf.one_hot(y_test, 10), axis=1)
 
 # Set the value of hyper-parameters
 epochs = 20
@@ -40,7 +42,7 @@ batch_size = 16
 # upsampling_size = (2,2)
 
 # Results by hyper-parameters
-# ==> learning rate: 0.0001; Epoch: 20; batch size: 16;
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16; loss:
 
 # Initiate a VGG16 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
@@ -88,12 +90,12 @@ vgg19.summary()
 
 # Compile the model
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-vgg19.compile(loss='sparse_categorical_crossentropy',
+vgg19.compile(loss='categorical_crossentropy',
               optimizer=optimizer,
               metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-vgg19.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+vgg19.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=epochs)
 
 # Predict the model with test set
-vgg19.evaluate(x_test, y_test, verbose=2)
+vgg19.evaluate(x_test, y_test_onehot, verbose=2)

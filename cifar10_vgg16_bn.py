@@ -34,17 +34,20 @@ cifar10 = tf.keras.datasets.cifar10
 x_train, x_test = x_train / 255.0, x_test / 255.0
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
+y_train_onehot = tf.squeeze(tf.one_hot(y_train, 10), axis=1)
+y_test_onehot = tf.squeeze(tf.one_hot(y_test, 10), axis=1)
 
 # Set the value of hyper-parameters
-epochs = 30
+epochs = 20
 learning_rate = 0.0001
-batch_size = 64
+batch_size = 16
 
 # Results by hyper-parameters
 # ==> learning rate: 0.0001; Epoch: 30; (default = None); loss: 1.2150 - accuracy: 0.7998
 # ==> learning rate: 0.0001, epochs: 30; batch_size: 64; loss: 0.9947 - accuracy: 0.7937
 # ==> learning rate: 0.0001, epochs: 30; batch_size: 128; loss: 1.0447 - accuracy: 0.7891 (faster)
 # ==> learning rate: 0.0001, epochs: 30; batch_size: 256; running out of memory
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16;
 
 # Batch the training set for batch normalization
 # *** check shuffle(buffer_size).batch(batch_size)
@@ -147,12 +150,12 @@ vgg16_bn.summary()
 
 # Compile the model
 optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)  # lower learning rate, better performance
-vgg16_bn.compile(loss='sparse_categorical_crossentropy',
+vgg16_bn.compile(loss='categorical_crossentropy',
                  optimizer=optimizer,
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-vgg16_bn.fit(x_train, y_train, batch_size=batch_size, epochs=30)  # Set batch
+vgg16_bn.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=30)  # Set batch
 
 # Test the model with test set
-vgg16_bn.predict(x_test, y_test, verbose=2)
+vgg16_bn.predict(x_test, y_test_onehot, verbose=2)
