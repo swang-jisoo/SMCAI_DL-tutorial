@@ -27,6 +27,8 @@ cifar10 = tf.keras.datasets.cifar10
 x_train, x_test = x_train / 255.0, x_test / 255.0
 x_train = x_train.astype("float32")
 x_test = x_test.astype("float32")
+y_train_onehot = tf.squeeze(tf.one_hot(y_train, 10), axis=1)
+y_test_onehot = tf.squeeze(tf.one_hot(y_test, 10), axis=1)
 
 # Set the value of hyper-parameters
 learning_rate = 0.0001
@@ -412,15 +414,15 @@ resnet50.summary()
 
 # Compile the model
 opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-resnet50.compile(loss='sparse_categorical_crossentropy',
+resnet50.compile(loss='categorical_crossentropy',
                  optimizer=opt,
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-resnet50.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+resnet50.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
-resnet50.evaluate(x_test, y_test, verbose=2)
+resnet50.evaluate(x_test, y_test_onehot, verbose=2)
 
 
 '''

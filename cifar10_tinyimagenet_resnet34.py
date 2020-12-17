@@ -234,6 +234,8 @@ if __name__ == '__main__':
     x_train, x_test = x_train / 255.0, x_test / 255.0
     x_train = x_train.astype("float32")
     x_test = x_test.astype("float32")
+    y_train_onehot = tf.squeeze(tf.one_hot(y_train, 10), axis=1)
+    y_test_onehot = tf.squeeze(tf.one_hot(y_test, 10), axis=1)
 
     # Create a model
     resnet34 = resnet(filters=[64, 128, 256, 512], blocks=[3, 4, 6, 3], bottleneck_yn=False, name='resnet34')
@@ -242,12 +244,12 @@ if __name__ == '__main__':
 
     # Compile the model
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    resnet34.compile(loss='sparse_categorical_crossentropy',
+    resnet34.compile(loss='categorical_crossentropy',
                      optimizer=optimizer,
                      metrics=['accuracy'])
 
     # Train the model to adjust parameters to minimize the loss
-    resnet34.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+    resnet34.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=epochs)
 
     # Test the model with test set
-    resnet34.evaluate(x_test, y_test, verbose=2)
+    resnet34.evaluate(x_test, y_test_onehot, verbose=2)
