@@ -58,7 +58,7 @@ batch_size = 16
 # ==> learning rate: 0.00005; Epoch: 20; loss: 1.2411 - accuracy: 0.7474
 # ==> learning rate: 0.0001; Epoch: 30; loss: 1.2150 - accuracy: 0.7998
 # ==> learning rate: 0.0001; Epoch: 30; up-sampling: 2,2; loss: 0.9695 - accuracy: 0.8239
-# ==> learning rate: 0.0001; Epoch: 20; batch size: 16;
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16; loss: 1.1909 - accuracy: 0.7927
 
 # Initiate a VGG16 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
