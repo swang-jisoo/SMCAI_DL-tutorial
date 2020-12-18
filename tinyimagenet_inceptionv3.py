@@ -36,7 +36,7 @@
 
 # Import necessary libraries
 import numpy as np
-from keras.callbacks import ReduceLROnPlateau
+#from keras.callbacks import ReduceLROnPlateau
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator

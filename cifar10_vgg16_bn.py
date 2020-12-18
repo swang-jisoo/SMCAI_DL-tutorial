@@ -155,7 +155,7 @@ vgg16_bn.compile(loss='categorical_crossentropy',
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-vgg16_bn.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=30)  # Set batch
+vgg16_bn.fit(x_train, y_train_onehot, batch_size=batch_size, epochs=epochs)  # Set batch
 
 # Test the model with test set
 vgg16_bn.predict(x_test, y_test_onehot, verbose=2)
