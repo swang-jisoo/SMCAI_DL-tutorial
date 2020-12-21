@@ -94,7 +94,7 @@ valid_generator = valid_datagen.flow_from_dataframe(val_data, directory=path+'/t
 '''
 
 # Results by hyper-parameters
-# ==> upsampling: 2; learing rate: 0.0001; epoch: 20; batch size: 16;
+# ==> upsampling: 2; learing rate: 0.0001; epoch: 20; batch size: 16; loss: 0.8499 - accuracy: 0.7981
 
 # Initiate a ResNet50 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')  # 75,75,3
