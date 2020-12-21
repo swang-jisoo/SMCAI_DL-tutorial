@@ -70,7 +70,8 @@ learning_rate_tn = 0.0001
 epochs_tn = 20
 
 # Results by hyper-parameters
-# ==> learning rate: (freeze) 0.001, (unfreeze) 0.0001; Epoch: (freeze) 10, (unfreeze) 10; loss: 0.3986 - accuracy: 0.9064
+# ==> (Inception v3) learning rate: (freeze) 0.001, (unfreeze) 0.0001; Epoch: (freeze) 10, (unfreeze) 10;
+#                    loss: 0.3986 - accuracy: 0.9064
 
 # Load cifar10 dataset
 cifar10 = tf.keras.datasets.cifar10
@@ -143,4 +144,45 @@ while fine_tuning:
 
 pretrained2.evaluate(x_test, y_test_onehot, verbose=2)
 
+'''
+# Initiate a VGG16 architecture
+input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
+# Rescale image (up-sampling) for better performance
+# NOTE: change the next layer's input
+# upsampling = tf.keras.layers.UpSampling2D(size=upsampling_size, name='upsampling')(input_tensor)
 
+# block 1
+conv1_1 = Conv2D(64, 3, activation='relu', padding='same', name='conv1-1')(input_tensor)
+conv1_2 = Conv2D(64, 3, activation='relu', padding='same', name='conv1-2')(conv1_1)
+maxpool1 = MaxPooling2D(2, padding='same', name='maxpool1')(conv1_2)  # down-sampling # 16,16,64
+# block 2
+conv2_1 = Conv2D(128, 3, activation='relu', padding='same', name='conv2-1')(maxpool1)
+conv2_2 = Conv2D(128, 3, activation='relu', padding='same', name='conv2-2')(conv2_1)
+maxpool2 = MaxPooling2D(2, padding='same', name='maxpool2')(conv2_2)  # 8,8,128
+# block 3
+conv3_1 = Conv2D(256, 3, activation='relu', padding='same', name='conv3-1')(maxpool2)
+conv3_2 = Conv2D(256, 3, activation='relu', padding='same', name='conv3-2')(conv3_1)
+conv3_3 = Conv2D(256, 3, activation='relu', padding='same', name='conv3-3')(conv3_2)
+maxpool3 = MaxPooling2D(2, padding='same', name='maxpool3')(conv3_3)  # 4,4,256
+# block 4
+conv4_1 = Conv2D(512, 3, activation='relu', padding='same', name='conv4-1')(maxpool3)
+conv4_2 = Conv2D(512, 3, activation='relu', padding='same', name='conv4-2')(conv4_1)
+conv4_3 = Conv2D(512, 3, activation='relu', padding='same', name='conv4-3')(conv4_2)
+maxpool4 = MaxPooling2D(2, padding='same', name='maxpool4')(conv4_3)  # 2,2,512
+# block 5
+conv5_1 = Conv2D(512, 3, activation='relu', padding='same', name='conv5-1')(maxpool4)
+conv5_2 = Conv2D(512, 3, activation='relu', padding='same', name='conv5-2')(conv5_1)
+conv5_3 = Conv2D(512, 3, activation='relu', padding='same', name='conv5-3')(conv5_2)
+maxpool5 = MaxPooling2D(2, padding='same', name='maxpool5')(conv5_3)  # 1,1,512
+
+# Fully connected (FC)
+flatten = Flatten(name='flatten')(maxpool5)
+# fc1 = Dense(4096, activation='relu', name='fc1')(flatten) # unnecessary due to the final dimension size after block 5
+# fc2 = Dense(2048, activation='relu', name='fc2')(fc1)
+fc3 = Dense(256, activation='relu', name='fc3')(flatten)  # NOTE: check input
+output_tensor = Dense(10, activation='softmax', name='output')(fc3)
+
+# Create a model
+vgg16 = Model(input_tensor, output_tensor, name='vgg16')
+vgg16.summary()  # plot the model architecture with the number of parameters (complexity)
+'''
