@@ -43,13 +43,11 @@
 #   - Weighted loss:
 
 # Import necessary libraries
+import os
+from PIL import Image
 import tensorflow as tf
 from tensorflow.keras import Input, Model
-from tensorflow.keras.layers import ZeroPadding2D, Conv2D, BatchNormalization, Activation, \
-    MaxPooling2D, AveragePooling2D, GlobalAveragePooling2D, Flatten, Dense, concatenate
-
-import tensorflow_datasets as tfds
-from tensorflow_examples.models.pix2pix import pix2pix
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
 
 # Hyper-parameters
 
@@ -57,12 +55,95 @@ from tensorflow_examples.models.pix2pix import pix2pix
 # ==>
 
 # Load the Pascal VOC dataset
+#   1. Download the Pascal VOC dataset: http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
+#   2. Get the path to the folder where the dataset was downloaded
+#   3. Extract the tar file with the code in the comment block:
+'''
+import tarfile
+import mxnet  # may need to install the package (run on cmd: pip install mxnet)
+
+base_dir = 'C:\\Users\\SMC\\PycharmProjects'  # this may differ from your folder location
+tar_dir = base_dir + '\\VOCtrainval_11-May-2012.tar'
+fp = tarfile.open(tar_dir, 'r')
+fp.extractall(base_dir)  # extract the tar file
+'''
+voc_dir = 'C:\\Users\\SMC\\PycharmProjects' + '\\VOCdevkit\\VOC2012'
+
+
+def read_voc_images(voc_dir, is_train=True):
+    """Read all VOC feature and label images."""
+    txt_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation',
+                             'train.txt' if is_train else 'val.txt')
+    with open(txt_fname, 'r') as f:
+        images = f.read().split()
+    features, labels = [], []
+    for i, fname in enumerate(images):
+        features.append(Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg')))
+        labels.append(Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png')))
+    return features, labels
+
+
+train_features, train_labels = read_voc_images(voc_dir, True)
+valid_features, valid_labels = read_voc_images(voc_dir, False)
 
 # Construct U-Net model
-x = Input(shape=(572, 572, 1))
+input_tensor = Input(shape=(572, 572, 1), name='input_tensor')
+
 # Contracting path
-x = Conv2D(64, 3, activation='relu', name='')(x)
-x = Conv2D(64, 3, activation='relu', name='')(x)
-x = MaxPooling2D((2, 2), strides=2, padding='valid', name='')(x)  # down-sampling
+cont1_1 = Conv2D(64, 3, activation='relu', name='cont1_1')(input_tensor)  # 570, 570, 64
+cont1_2 = Conv2D(64, 3, activation='relu', name='cont1_2')(cont1_1)  # 568, 568, 64
+
+cont2_dwn = MaxPooling2D((2, 2), strides=2, name='cont2_dwn')(cont1_2)  # down-sampling; 284, 284, 64
+cont2_1 = Conv2D(128, 3, activation='relu', name='cont2_1')(cont2_dwn)  # 282, 282, 128
+cont2_2 = Conv2D(128, 3, activation='relu', name='cont2_2')(cont2_1)  # 280, 280, 128
+
+cont3_dwn = MaxPooling2D((2, 2), strides=2, name='cont3_dwn')(cont2_2)  # down-sampling; 140, 140, 128
+cont3_1 = Conv2D(256, 3, activation='relu', name='cont3_1')(cont3_dwn)  # 138, 138, 256
+cont3_2 = Conv2D(256, 3, activation='relu', name='cont3_2')(cont3_1)  # 136, 136, 256
+
+cont4_dwn = MaxPooling2D((2, 2), strides=2, name='cont4_dwn')(cont3_2)  # down-sampling; 68, 68, 256
+cont4_1 = Conv2D(512, 3, activation='relu', name='cont4_1')(cont4_dwn)  # 66, 66, 256
+cont4_2 = Conv2D(512, 3, activation='relu', name='cont4_2')(cont4_1)  # 64, 64, 256
+
+cont5_dwn = MaxPooling2D((2, 2), strides=2, name='cont5_dwn')(cont4_2)  # down-sampling; 32, 32, 512
+cont5_1 = Conv2D(1024, 3, activation='relu', name='cont5_1')(cont5_dwn)  # 30, 30, 1024
+cont5_2 = Conv2D(1024, 3, activation='relu', name='cont5_2')(cont5_1)  # 28, 28, 1024
 
 # Expansive path
+expn1_up = Conv2DTranspose(512, 2, strides=2, name='expn1_up')(cont5_2)  # up-sampling; 56, 56, 512
+cropping_size = (cont4_2.shape[1] - expn1_up.shape[1]) // 2
+cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
+expn1_crop = Cropping2D(cropping, name='expn1_crop')(cont4_2)  # 56, 56, 512
+expn1_concat = concatenate([expn1_up, expn1_crop], axis=-1, name='expn1_concat')  # 56, 56, 1024
+expn1_1 = Conv2D(512, 3, activation='relu', name='expn1_1')(expn1_concat)  # 54, 54, 512
+expn1_2 = Conv2D(512, 3, activation='relu', name='expn1_2')(expn1_1)  # 52, 52, 512
+
+expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(expn1_2)  # up-sampling; 104, 104, 256
+cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
+cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
+expn2_crop = Cropping2D(cropping, name='expn2_crop')(cont3_2)  # 104, 104, 256
+expn2_concat = concatenate([expn2_up, expn2_crop], axis=-1, name='expn2_concat')  # 104, 104, 512
+expn2_1 = Conv2D(256, 3, activation='relu', name='expn2_1')(expn2_concat)  # 102, 102, 256
+expn2_2 = Conv2D(256, 3, activation='relu', name='expn2_2')(expn2_1)  # 100, 100, 256
+
+expn3_up = Conv2DTranspose(128, 2, strides=2, name='expn3_up')(expn2_2)  # up-sampling; 200, 200, 128
+cropping_size = (cont2_2.shape[1] - expn3_up.shape[1]) // 2
+cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
+expn3_crop = Cropping2D(cropping, name='expn3_crop')(cont2_2)  # 200, 200, 128
+expn3_concat = concatenate([expn3_up, expn3_crop], axis=-1, name='expn3_concat')  # 200, 200, 256
+expn3_1 = Conv2D(128, 3, activation='relu', name='expn3_1')(expn3_concat)  # 198, 198, 128
+expn3_2 = Conv2D(128, 3, activation='relu', name='expn3_2')(expn3_1)  # 196, 196, 128
+
+expn4_up = Conv2DTranspose(64, 2, strides=2, name='expn4_up')(expn3_2)  # up-sampling; 392, 392, 64
+cropping_size = (cont1_2.shape[1] - expn4_up.shape[1]) // 2
+cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
+expn4_crop = Cropping2D(cropping, name='expn4_crop')(cont1_2)  # 392, 392, 64
+expn4_concat = concatenate([expn4_up, expn4_crop], axis=-1, name='expn4_concat')  # 392, 392, 128
+expn4_1 = Conv2D(64, 3, activation='relu', name='expn4_1')(expn4_concat)  # 390, 390, 64
+expn4_2 = Conv2D(64, 3, activation='relu', name='expn4_2')(expn4_1)  # 388, 388, 64
+
+output_tensor = Conv2D(2, 1, name='output_tensor')(expn4_2)
+
+# Create a model
+u_net = Model(input_tensor, output_tensor, name='u_net')
+u_net.summary()
