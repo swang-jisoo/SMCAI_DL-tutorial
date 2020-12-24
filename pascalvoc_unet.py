@@ -1,6 +1,10 @@
 #####
 # Image (semantic) segmentation
+
 # Dataset: Pascal VOC
+# A dataset that can be used for classification, segmentation, detection, and action classification.
+# There are 20 object classes.
+
 # Model: U-net
 
 # Notation
@@ -40,7 +44,8 @@
 #         ref. Best Practices for Convolutional Neural Networks Applied to Visual Document Analysis
 #         *** operation?
 #   - Overlap tile: fill the missing context of the border region with the mirrored input image.
-#   - Weighted loss:
+#   - Weighted loss: designed to tackle imbalanced data in back/foreground classification;
+#     up-weight the mis-classification error of less frequent classes in the cross-entropy loss
 
 # Import necessary libraries
 import os
@@ -50,6 +55,9 @@ from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
 
 # Hyper-parameters
+learning_rate = 0.0001
+epochs = 20
+batch_size = 16
 
 # Results
 # ==>
@@ -87,7 +95,8 @@ train_features, train_labels = read_voc_images(voc_dir, True)
 valid_features, valid_labels = read_voc_images(voc_dir, False)
 
 # Construct U-Net model
-input_tensor = Input(shape=(572, 572, 1), name='input_tensor')
+# *** input shape
+input_tensor = Input(shape=(572, 572, 3), name='input_tensor')
 
 # Contracting path
 cont1_1 = Conv2D(64, 3, activation='relu', name='cont1_1')(input_tensor)  # 570, 570, 64
@@ -110,6 +119,9 @@ cont5_1 = Conv2D(1024, 3, activation='relu', name='cont5_1')(cont5_dwn)  # 30, 3
 cont5_2 = Conv2D(1024, 3, activation='relu', name='cont5_2')(cont5_1)  # 28, 28, 1024
 
 # Expansive path
+# *** UpSampling2D vs. Conv2DTranspose:
+#   ref. https://stackoverflow.com/questions/53654310/what-is-the-difference-between-upsampling2d-and-conv2dtranspose-functions-in-ker
+
 expn1_up = Conv2DTranspose(512, 2, strides=2, name='expn1_up')(cont5_2)  # up-sampling; 56, 56, 512
 cropping_size = (cont4_2.shape[1] - expn1_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
@@ -142,8 +154,21 @@ expn4_concat = concatenate([expn4_up, expn4_crop], axis=-1, name='expn4_concat')
 expn4_1 = Conv2D(64, 3, activation='relu', name='expn4_1')(expn4_concat)  # 390, 390, 64
 expn4_2 = Conv2D(64, 3, activation='relu', name='expn4_2')(expn4_1)  # 388, 388, 64
 
-output_tensor = Conv2D(2, 1, name='output_tensor')(expn4_2)
+# *** channel number
+output_tensor = Conv2D(20, 1, name='output_tensor')(expn4_2)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')
 u_net.summary()
+
+# Compile the model
+opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+inceptionv3.compile(loss='sparse_categorical_crossentropy',
+                 optimizer=opt,
+                 metrics=['accuracy'])
+
+# Train the model to adjust parameters to minimize the loss
+inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+
+# Test the model with test set
+inceptionv3.evaluate(x_test, y_test, verbose=2)
