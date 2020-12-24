@@ -86,8 +86,12 @@ def read_voc_images(voc_dir, is_train=True):
         images = f.read().split()
     features, labels = [], []
     for i, fname in enumerate(images):
-        features.append(Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg')))
-        labels.append(Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png')))
+        feature = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
+        label = Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
+        (ft_width, ft_height) = feature.size
+
+        features.append()
+        labels.append()
     return features, labels
 
 
