@@ -42,7 +42,7 @@ batch_size = 16
 # upsampling_size = (2,2)
 
 # Results by hyper-parameters
-# ==> learning rate: 0.0001; Epoch: 20; batch size: 16; loss:
+# ==> learning rate: 0.0001; Epoch: 20; batch size: 16; loss: 0.9532 - accuracy: 0.8017
 
 # Initiate a VGG16 architecture
 input_tensor = Input(shape=(32, 32, 3), dtype='float32', name='input')
