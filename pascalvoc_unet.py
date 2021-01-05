@@ -1,5 +1,7 @@
 #####
 # Image (semantic) segmentation
+# For each pixel in a test image, predict the class of the object containing that pixel or
+# `background' if the pixel does not belong to one of the 20 specified classes.
 
 # Dataset: Pascal VOC
 # A dataset that can be used for classification, segmentation, detection, and action classification.
@@ -20,7 +22,7 @@
 # In other words, semantic segmentation is a image classification at pixel level (thus, localization is important).
 # It outputs a pixel-wise mask of the image = labels for each pixel of the image with a category label; e.g.:
 #   Class 1 : Pixel belonging to an object.
-#   Class 2 : Pixel bordering the object.
+#   Class 2 : Pixel bordering the object. (Not in Pascal VOC case)
 #   Class 3 : None of the above/ Surrounding pixel.
 
 # Fully Convolution Network (FCN)
@@ -63,35 +65,52 @@ batch_size = 16
 # ==>
 
 # Load the Pascal VOC dataset
-#   1. Download the Pascal VOC dataset: http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
-#   2. Get the path to the folder where the dataset was downloaded
-#   3. Extract the tar file with the code in the comment block:
+#   1. Download the Pascal VOC dataset and unzip the tar file:
 '''
+# download the Pascal VOC dataset (cmd)
+wget http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
+
+# unzip the tar file (1) (cmd)
+tar xf VOCtrainval_11-May-2012.tar
+# OR (2) (python)
 import tarfile
 import mxnet  # may need to install the package (run on cmd: pip install mxnet)
 
-base_dir = 'C:\\Users\\SMC\\PycharmProjects'  # this may differ from your folder location
-tar_dir = base_dir + '\\VOCtrainval_11-May-2012.tar'
+base_dir = 'C:/Users/SMC/PycharmProjects'  # this may differ from your folder location
+tar_dir = base_dir + '/VOCtrainval_11-May-2012.tar'
 fp = tarfile.open(tar_dir, 'r')
 fp.extractall(base_dir)  # extract the tar file
 '''
-voc_dir = 'C:\\Users\\SMC\\PycharmProjects' + '\\VOCdevkit\\VOC2012'
 
+#   2. Get the path to the folder where the dataset exists
+voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
 
+#   3. Understand the directory structure
+#       + VOCdevkit
+#           + VOC2012
+#               + Annotations: annotations for object detection; xml files
+#               + ImageSets: list of image file name classified by classes or train/trainval/val; txt files
+#               + JPEGImages: input images; jpg files
+#               + SegmentationClass: segmentation label (mask) by class (semantic); png files
+#               + SegmentationObject: segmentation label (mask) by object (instance); png files
+
+#   4. get image and label for semantic segmentation
 def read_voc_images(voc_dir, is_train=True):
     """Read all VOC feature and label images."""
-    txt_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation',
-                             'train.txt' if is_train else 'val.txt')
+    txt_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
+
     with open(txt_fname, 'r') as f:
         images = f.read().split()
+
     features, labels = [], []
     for i, fname in enumerate(images):
         feature = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
-        label = Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
+        label = Image.open(os.path.join(voc_dir, 'SegmentationObject', f'{fname}.png'))
         (ft_width, ft_height) = feature.size
 
-        features.append()
-        labels.append()
+        features.append(feature)
+        labels.append(label)
+
     return features, labels
 
 
@@ -159,7 +178,7 @@ expn4_1 = Conv2D(64, 3, activation='relu', name='expn4_1')(expn4_concat)  # 390,
 expn4_2 = Conv2D(64, 3, activation='relu', name='expn4_2')(expn4_1)  # 388, 388, 64
 
 # *** channel number
-output_tensor = Conv2D(20, 1, name='output_tensor')(expn4_2)
+output_tensor = Conv2D(20+1, 1, name='output_tensor')(expn4_2)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')
@@ -167,12 +186,12 @@ u_net.summary()
 
 # Compile the model
 opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-inceptionv3.compile(loss='sparse_categorical_crossentropy',
+u_net.compile(loss='sparse_categorical_crossentropy',
                  optimizer=opt,
                  metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-inceptionv3.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
-inceptionv3.evaluate(x_test, y_test, verbose=2)
+u_net.evaluate(x_test, y_test, verbose=2)
