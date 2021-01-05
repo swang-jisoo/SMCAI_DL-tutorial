@@ -21,9 +21,9 @@
 # It aims to segment the image, i.e. clustering parts of an image together which belong to the same object.
 # In other words, semantic segmentation is a image classification at pixel level (thus, localization is important).
 # It outputs a pixel-wise mask of the image = labels for each pixel of the image with a category label; e.g.:
-#   Class 1 : Pixel belonging to an object.
-#   Class 2 : Pixel bordering the object. (Not in Pascal VOC case)
-#   Class 3 : None of the above/ Surrounding pixel.
+#   Class 1 : Pixel belonging to an object. ( 20 objects in Pascal VOC)
+#   Class 2 : Pixel bordering the object. (Not applicable in Pascal VOC)
+#   Class 3 : None of the above/ Surrounding pixel. (predict total 21 objects in Pascal VOC)
 
 # Fully Convolution Network (FCN)
 
@@ -52,11 +52,14 @@
 # Import necessary libraries
 import os
 from PIL import Image
+from mxnet import image
 import tensorflow as tf
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
+import numpy as np
 
 # Hyper-parameters
+img_size = (224, 224)
 learning_rate = 0.0001
 epochs = 20
 batch_size = 16
@@ -85,6 +88,7 @@ fp.extractall(base_dir)  # extract the tar file
 #   2. Get the path to the folder where the dataset exists
 voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
 
+
 #   3. Understand the directory structure
 #       + VOCdevkit
 #           + VOC2012
@@ -95,51 +99,63 @@ voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
 #               + SegmentationObject: segmentation label (mask) by object (instance); png files
 
 #   4. get image and label for semantic segmentation
-def read_voc_images(voc_dir, is_train=True):
+def read_voc_images(voc_dir, img_size, is_train=True):
     """Read all VOC feature and label images."""
-    txt_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
+    img_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
 
-    with open(txt_fname, 'r') as f:
+    with open(img_fname, 'r') as f:
         images = f.read().split()
 
-    features, labels = [], []
+    xs, ys = [], []
     for i, fname in enumerate(images):
-        feature = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
-        label = Image.open(os.path.join(voc_dir, 'SegmentationObject', f'{fname}.png'))
-        (ft_width, ft_height) = feature.size
+        x = image.imread(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
+        y = image.imread(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
 
-        features.append(feature)
-        labels.append(label)
+        # preprocessing
+        # crop the image by trimming on all four sides and preserving the center of the image
+        x, rect = image.center_crop(x, img_size)
+        y = image.fixed_crop(y, *rect)
+        '''
+        # randomly crop the image to the given size
+        x, rect = image.random_crop(x, img_size)
+        y = image.fixed_crop(y, rect)
+        '''
+        # normalize
+        x = x.astype('float32') / 255.0
+        y = y.astype('float32') / 255.0
 
-    return features, labels
+        xs.append(x)
+        ys.append(y)
+
+    return xs, ys
 
 
-train_features, train_labels = read_voc_images(voc_dir, True)
-valid_features, valid_labels = read_voc_images(voc_dir, False)
+x_train, y_train = read_voc_images(voc_dir, img_size, True)
+x_valid, y_valid = read_voc_images(voc_dir, img_size, False)
 
 # Construct U-Net model
 # *** input shape
-input_tensor = Input(shape=(572, 572, 3), name='input_tensor')
+input_tensor = Input(shape=img_size + (3,), name='input_tensor')
 
 # Contracting path
-cont1_1 = Conv2D(64, 3, activation='relu', name='cont1_1')(input_tensor)  # 570, 570, 64
-cont1_2 = Conv2D(64, 3, activation='relu', name='cont1_2')(cont1_1)  # 568, 568, 64
+cont1_1 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_1')(input_tensor)  # 570, 570, 64
+cont1_2 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_2')(cont1_1)  # 568, 568, 64
 
-cont2_dwn = MaxPooling2D((2, 2), strides=2, name='cont2_dwn')(cont1_2)  # down-sampling; 284, 284, 64
-cont2_1 = Conv2D(128, 3, activation='relu', name='cont2_1')(cont2_dwn)  # 282, 282, 128
-cont2_2 = Conv2D(128, 3, activation='relu', name='cont2_2')(cont2_1)  # 280, 280, 128
+cont2_dwn = MaxPooling2D((2, 2), strides=2, name='cont2_dwn')(cont1_2)  # down-sampling; 284, 284, 64; 124
+cont2_1 = Conv2D(128, 3, activation='relu', padding='same', name='cont2_1')(cont2_dwn)  # 282, 282, 128
+cont2_2 = Conv2D(128, 3, activation='relu', padding='same', name='cont2_2')(cont2_1)  # 280, 280, 128
 
-cont3_dwn = MaxPooling2D((2, 2), strides=2, name='cont3_dwn')(cont2_2)  # down-sampling; 140, 140, 128
-cont3_1 = Conv2D(256, 3, activation='relu', name='cont3_1')(cont3_dwn)  # 138, 138, 256
-cont3_2 = Conv2D(256, 3, activation='relu', name='cont3_2')(cont3_1)  # 136, 136, 256
+cont3_dwn = MaxPooling2D((2, 2), strides=2, name='cont3_dwn')(cont2_2)  # down-sampling; 140, 140, 128; 60
+cont3_1 = Conv2D(256, 3, activation='relu', padding='same', name='cont3_1')(cont3_dwn)  # 138, 138, 256
+cont3_2 = Conv2D(256, 3, activation='relu', padding='same', name='cont3_2')(cont3_1)  # 136, 136, 256
 
-cont4_dwn = MaxPooling2D((2, 2), strides=2, name='cont4_dwn')(cont3_2)  # down-sampling; 68, 68, 256
-cont4_1 = Conv2D(512, 3, activation='relu', name='cont4_1')(cont4_dwn)  # 66, 66, 256
-cont4_2 = Conv2D(512, 3, activation='relu', name='cont4_2')(cont4_1)  # 64, 64, 256
+cont4_dwn = MaxPooling2D((2, 2), strides=2, name='cont4_dwn')(cont3_2)  # down-sampling; 68, 68, 256; 28
+cont4_1 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_1')(cont4_dwn)  # 66, 66, 256
+cont4_2 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_2')(cont4_1)  # 64, 64, 256
 
-cont5_dwn = MaxPooling2D((2, 2), strides=2, name='cont5_dwn')(cont4_2)  # down-sampling; 32, 32, 512
-cont5_1 = Conv2D(1024, 3, activation='relu', name='cont5_1')(cont5_dwn)  # 30, 30, 1024
-cont5_2 = Conv2D(1024, 3, activation='relu', name='cont5_2')(cont5_1)  # 28, 28, 1024
+cont5_dwn = MaxPooling2D((2, 2), strides=2, name='cont5_dwn')(cont4_2)  # down-sampling; 32, 32, 512; 12
+cont5_1 = Conv2D(1024, 3, activation='relu', padding='same', name='cont5_1')(cont5_dwn)  # 30, 30, 1024
+cont5_2 = Conv2D(1024, 3, activation='relu', padding='same', name='cont5_2')(cont5_1)  # 28, 28, 1024
 
 # Expansive path
 # *** UpSampling2D vs. Conv2DTranspose:
@@ -150,35 +166,35 @@ cropping_size = (cont4_2.shape[1] - expn1_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn1_crop = Cropping2D(cropping, name='expn1_crop')(cont4_2)  # 56, 56, 512
 expn1_concat = concatenate([expn1_up, expn1_crop], axis=-1, name='expn1_concat')  # 56, 56, 1024
-expn1_1 = Conv2D(512, 3, activation='relu', name='expn1_1')(expn1_concat)  # 54, 54, 512
-expn1_2 = Conv2D(512, 3, activation='relu', name='expn1_2')(expn1_1)  # 52, 52, 512
+expn1_1 = Conv2D(512, 3, activation='relu', padding='same', name='expn1_1')(expn1_concat)  # 54, 54, 512
+expn1_2 = Conv2D(512, 3, activation='relu', padding='same', name='expn1_2')(expn1_1)  # 52, 52, 512
 
 expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(expn1_2)  # up-sampling; 104, 104, 256
 cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn2_crop = Cropping2D(cropping, name='expn2_crop')(cont3_2)  # 104, 104, 256
 expn2_concat = concatenate([expn2_up, expn2_crop], axis=-1, name='expn2_concat')  # 104, 104, 512
-expn2_1 = Conv2D(256, 3, activation='relu', name='expn2_1')(expn2_concat)  # 102, 102, 256
-expn2_2 = Conv2D(256, 3, activation='relu', name='expn2_2')(expn2_1)  # 100, 100, 256
+expn2_1 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_1')(expn2_concat)  # 102, 102, 256
+expn2_2 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_2')(expn2_1)  # 100, 100, 256
 
 expn3_up = Conv2DTranspose(128, 2, strides=2, name='expn3_up')(expn2_2)  # up-sampling; 200, 200, 128
 cropping_size = (cont2_2.shape[1] - expn3_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn3_crop = Cropping2D(cropping, name='expn3_crop')(cont2_2)  # 200, 200, 128
 expn3_concat = concatenate([expn3_up, expn3_crop], axis=-1, name='expn3_concat')  # 200, 200, 256
-expn3_1 = Conv2D(128, 3, activation='relu', name='expn3_1')(expn3_concat)  # 198, 198, 128
-expn3_2 = Conv2D(128, 3, activation='relu', name='expn3_2')(expn3_1)  # 196, 196, 128
+expn3_1 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_1')(expn3_concat)  # 198, 198, 128
+expn3_2 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_2')(expn3_1)  # 196, 196, 128
 
 expn4_up = Conv2DTranspose(64, 2, strides=2, name='expn4_up')(expn3_2)  # up-sampling; 392, 392, 64
 cropping_size = (cont1_2.shape[1] - expn4_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn4_crop = Cropping2D(cropping, name='expn4_crop')(cont1_2)  # 392, 392, 64
 expn4_concat = concatenate([expn4_up, expn4_crop], axis=-1, name='expn4_concat')  # 392, 392, 128
-expn4_1 = Conv2D(64, 3, activation='relu', name='expn4_1')(expn4_concat)  # 390, 390, 64
-expn4_2 = Conv2D(64, 3, activation='relu', name='expn4_2')(expn4_1)  # 388, 388, 64
+expn4_1 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_1')(expn4_concat)  # 390, 390, 64
+expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4_1)  # 388, 388, 64
 
 # *** channel number
-output_tensor = Conv2D(20+1, 1, name='output_tensor')(expn4_2)
+output_tensor = Conv2D(20 + 1, 1, padding='same', name='output_tensor')(expn4_2)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')
@@ -187,11 +203,11 @@ u_net.summary()
 # Compile the model
 opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 u_net.compile(loss='sparse_categorical_crossentropy',
-                 optimizer=opt,
-                 metrics=['accuracy'])
+              optimizer=opt,
+              metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+u_net.fit(x_train, y_train, epochs=epochs)
 
 # Test the model with test set
-u_net.evaluate(x_test, y_test, verbose=2)
+u_net.evaluate(x_valid, y_valid, verbose=2)
