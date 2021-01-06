@@ -52,11 +52,17 @@
 # Import necessary libraries
 import os
 from PIL import Image
-from mxnet import image
+#from mxnet import image
+import mxnet as mx
 import tensorflow as tf
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
 import numpy as np
+
+# Fix the gpu memory issue
+config = tf.compat.v1.ConfigProto()
+config.gpu_options.per_process_gpu_memory_fraction = 0.3  # <=0.3 with GTX 1050 (2GB)
+session = tf.compat.v1.Session(config=config)
 
 # Hyper-parameters
 img_size = (224, 224)
@@ -107,27 +113,70 @@ def read_voc_images(voc_dir, img_size, is_train=True):
         images = f.read().split()
 
     xs, ys = [], []
+
     for i, fname in enumerate(images):
-        x = image.imread(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
-        y = image.imread(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
+        x = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
+        y = Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
+
+        # crop the image by trimming on all four sides and preserving the center of the image
+        x = crop_center(x, img_size)
+        y = crop_center(y, img_size)
+
+        x = np.asarray(x)
+        y = np.asarray(y)
+
+        xs.append(x)
+        ys.append(y)
+
+    x_np = np.asarray(xs, dtype='float32') / 255.0
+    y_np = np.asarray(ys, dtype='float32') / 255.0
+
+    return x_np, y_np
+
+def crop_center(pil_img, img_size):
+    (crop_width, crop_height) = img_size
+    img_width, img_height = pil_img.size
+    return pil_img.crop(((img_width - crop_width) // 2,
+                         (img_height - crop_height) // 2,
+                         (img_width + crop_width) // 2,
+                         (img_height + crop_height) // 2))
+
+
+'''
+def read_voc_images(voc_dir, img_size, is_train=True):
+    """Read all VOC feature and label images."""
+    img_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
+
+    with open(img_fname, 'r') as f:
+        images = f.read().split()
+
+    xs, ys = [], []
+
+    for i, fname in enumerate(images):
+        x = mx.image.imread(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
+        y = mx.image.imread(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
 
         # preprocessing
         # crop the image by trimming on all four sides and preserving the center of the image
-        x, rect = image.center_crop(x, img_size)
-        y = image.fixed_crop(y, *rect)
-        '''
+        x, rect = mx.image.center_crop(x, img_size)
+        y = mx.image.fixed_crop(y, *rect)
+        # OR
         # randomly crop the image to the given size
         x, rect = image.random_crop(x, img_size)
         y = image.fixed_crop(y, rect)
-        '''
+        
         # normalize
         x = x.astype('float32') / 255.0
         y = y.astype('float32') / 255.0
+
+        x = mx.nd.expand_dims(x, axis=0)
+        y = mx.nd.expand_dims(y, axis=0)
 
         xs.append(x)
         ys.append(y)
 
     return xs, ys
+'''
 
 
 x_train, y_train = read_voc_images(voc_dir, img_size, True)
@@ -207,7 +256,7 @@ u_net.compile(loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-u_net.fit(x_train, y_train, epochs=epochs)
+u_net.fit(x_train, y_train, batch_size=None, epochs=epochs)
 
 # Test the model with test set
 u_net.evaluate(x_valid, y_valid, verbose=2)
