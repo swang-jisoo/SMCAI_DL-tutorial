@@ -85,7 +85,7 @@ fp.extractall(base_dir)  # extract the tar file
 '''
 
 #   2. Get the path to the folder where the dataset exists
-voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
+voc_dir = 'D:/PycharmProjects' + '/VOCdevkit/VOC2012'
 
 
 #   3. Understand the directory structure
