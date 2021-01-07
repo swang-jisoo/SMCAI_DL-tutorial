@@ -52,23 +52,19 @@
 # Import necessary libraries
 import os
 from PIL import Image
-#from mxnet import image
-import mxnet as mx
+# import mxnet as mx
+# from mxnet import image
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
-import numpy as np
-
-# Fix the gpu memory issue
-config = tf.compat.v1.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.3  # <=0.3 with GTX 1050 (2GB)
-session = tf.compat.v1.Session(config=config)
 
 # Hyper-parameters
-img_size = (224, 224)
-learning_rate = 0.0001
-epochs = 20
+center_crop_size = (216, 216)
+resize_size = (72, 72)
+learning_rate = 0.05  # for u-net, start with larger learning rate
 batch_size = 16
+epochs = 20
 
 # Results
 # ==>
@@ -94,7 +90,6 @@ fp.extractall(base_dir)  # extract the tar file
 #   2. Get the path to the folder where the dataset exists
 voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
 
-
 #   3. Understand the directory structure
 #       + VOCdevkit
 #           + VOC2012
@@ -105,44 +100,8 @@ voc_dir = 'C:/Users/SMC/PycharmProjects' + '/VOCdevkit/VOC2012'
 #               + SegmentationObject: segmentation label (mask) by object (instance); png files
 
 #   4. get image and label for semantic segmentation
-def read_voc_images(voc_dir, img_size, is_train=True):
-    """Read all VOC feature and label images."""
-    img_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
-
-    with open(img_fname, 'r') as f:
-        images = f.read().split()
-
-    xs, ys = [], []
-
-    for i, fname in enumerate(images):
-        x = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
-        y = Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
-
-        # crop the image by trimming on all four sides and preserving the center of the image
-        x = crop_center(x, img_size)
-        y = crop_center(y, img_size)
-
-        x = np.asarray(x)
-        y = np.asarray(y)
-
-        xs.append(x)
-        ys.append(y)
-
-    x_np = np.asarray(xs, dtype='float32') / 255.0
-    y_np = np.asarray(ys, dtype='float32') / 255.0
-
-    return x_np, y_np
-
-def crop_center(pil_img, img_size):
-    (crop_width, crop_height) = img_size
-    img_width, img_height = pil_img.size
-    return pil_img.crop(((img_width - crop_width) // 2,
-                         (img_height - crop_height) // 2,
-                         (img_width + crop_width) // 2,
-                         (img_height + crop_height) // 2))
-
-
 '''
+# Converting mxnet.nd.array to numpy.array can cause troubles. Instead, use PIL library.
 def read_voc_images(voc_dir, img_size, is_train=True):
     """Read all VOC feature and label images."""
     img_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
@@ -164,7 +123,7 @@ def read_voc_images(voc_dir, img_size, is_train=True):
         # randomly crop the image to the given size
         x, rect = image.random_crop(x, img_size)
         y = image.fixed_crop(y, rect)
-        
+
         # normalize
         x = x.astype('float32') / 255.0
         y = y.astype('float32') / 255.0
@@ -177,14 +136,55 @@ def read_voc_images(voc_dir, img_size, is_train=True):
 
     return xs, ys
 '''
+# With PIL library
+def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
+    """Read all VOC feature and label images."""
+    img_fname = os.path.join(voc_dir, 'ImageSets', 'Segmentation', 'train.txt' if is_train else 'val.txt')
+
+    with open(img_fname, 'r') as f:
+        images = f.read().split()
+
+    xs, ys = [], []
+
+    for i, fname in enumerate(images):
+        x = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
+        y = Image.open(os.path.join(voc_dir, 'SegmentationClass', f'{fname}.png'))
+
+        # crop the image by trimming on all four sides and preserving the center of the image
+        x = crop_center(x, center_crop_size)
+        y = crop_center(y, center_crop_size)
+
+        x = x.resize(resize_size)
+        y = y.resize(resize_size)
+
+        # normalize
+        x = np.asarray(x, dtype='float32') / 255.0
+        y = np.asarray(y, dtype='float32') / 255.0
+
+        xs.append(x)
+        ys.append(y)
+
+    x_np = np.asarray(xs)
+    y_np = np.asarray(ys)
+
+    return x_np, y_np
 
 
-x_train, y_train = read_voc_images(voc_dir, img_size, True)
-x_valid, y_valid = read_voc_images(voc_dir, img_size, False)
+def crop_center(pil_img, center_crop_size):
+    (crop_width, crop_height) = center_crop_size
+    img_width, img_height = pil_img.size
+    return pil_img.crop(((img_width - crop_width) // 2,
+                         (img_height - crop_height) // 2,
+                         (img_width + crop_width) // 2,
+                         (img_height + crop_height) // 2))
+
+
+x_train, y_train = read_voc_images(voc_dir, center_crop_size, resize_size, True)
+x_valid, y_valid = read_voc_images(voc_dir, center_crop_size, resize_size, False)
 
 # Construct U-Net model
 # *** input shape
-input_tensor = Input(shape=img_size + (3,), name='input_tensor')
+input_tensor = Input(shape=resize_size + (3,), name='input_tensor')
 
 # Contracting path
 cont1_1 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_1')(input_tensor)  # 570, 570, 64
@@ -202,14 +202,18 @@ cont4_dwn = MaxPooling2D((2, 2), strides=2, name='cont4_dwn')(cont3_2)  # down-s
 cont4_1 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_1')(cont4_dwn)  # 66, 66, 256
 cont4_2 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_2')(cont4_1)  # 64, 64, 256
 
+'''
+# reduce the depth of u-net
 cont5_dwn = MaxPooling2D((2, 2), strides=2, name='cont5_dwn')(cont4_2)  # down-sampling; 32, 32, 512; 12
 cont5_1 = Conv2D(1024, 3, activation='relu', padding='same', name='cont5_1')(cont5_dwn)  # 30, 30, 1024
 cont5_2 = Conv2D(1024, 3, activation='relu', padding='same', name='cont5_2')(cont5_1)  # 28, 28, 1024
+'''
 
 # Expansive path
 # *** UpSampling2D vs. Conv2DTranspose:
 #   ref. https://stackoverflow.com/questions/53654310/what-is-the-difference-between-upsampling2d-and-conv2dtranspose-functions-in-ker
 
+'''
 expn1_up = Conv2DTranspose(512, 2, strides=2, name='expn1_up')(cont5_2)  # up-sampling; 56, 56, 512
 cropping_size = (cont4_2.shape[1] - expn1_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
@@ -217,8 +221,9 @@ expn1_crop = Cropping2D(cropping, name='expn1_crop')(cont4_2)  # 56, 56, 512
 expn1_concat = concatenate([expn1_up, expn1_crop], axis=-1, name='expn1_concat')  # 56, 56, 1024
 expn1_1 = Conv2D(512, 3, activation='relu', padding='same', name='expn1_1')(expn1_concat)  # 54, 54, 512
 expn1_2 = Conv2D(512, 3, activation='relu', padding='same', name='expn1_2')(expn1_1)  # 52, 52, 512
+'''
 
-expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(expn1_2)  # up-sampling; 104, 104, 256
+expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(cont4_2)  # up-sampling; 104, 104, 256
 cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn2_crop = Cropping2D(cropping, name='expn2_crop')(cont3_2)  # 104, 104, 256
@@ -243,7 +248,7 @@ expn4_1 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_1')(expn4
 expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4_1)  # 388, 388, 64
 
 # *** channel number
-output_tensor = Conv2D(20 + 1, 1, padding='same', name='output_tensor')(expn4_2)
+output_tensor = Conv2D(20 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_2)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')
@@ -256,7 +261,7 @@ u_net.compile(loss='sparse_categorical_crossentropy',
               metrics=['accuracy'])
 
 # Train the model to adjust parameters to minimize the loss
-u_net.fit(x_train, y_train, batch_size=None, epochs=epochs)
+u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
 u_net.evaluate(x_valid, y_valid, verbose=2)
