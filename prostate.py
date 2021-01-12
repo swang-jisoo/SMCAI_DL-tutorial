@@ -3,6 +3,9 @@
 
 # Dataset: harvard dataverse prostate
 # ref. https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/OCYCMP
+# In the masks, pixel indices correspond to classes as follows:
+# 0=Benign (green), 1=Gleason_3 (blue), 2=Gleason_4 (yellow), 3=Gleason_5 (red), 4=unlabelled (white).
+# ==> total 5 output
 
 # Model: U-net
 
@@ -14,6 +17,8 @@
 # Import necessary libraries
 import os
 import tarfile
+import random
+import math
 from PIL import Image
 import numpy as np
 import tensorflow as tf
@@ -21,8 +26,10 @@ from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropping2D, concatenate
 
 # Hyper-parameters
-ori_size = (216, 216)
-img_size = (72, 72)
+rnd_freq = 10  # number of randomly cropped images to generate
+rndcrop_size = (216, 216)  # W, H
+resize_size = (72, 72)   # W, H
+output_size = 5  # output channel size; 5 for harvard dataverse prostate dataset
 learning_rate = 0.05  # for u-net, start with larger learning rate
 batch_size = 16
 epochs = 20
@@ -51,7 +58,7 @@ test_tar = ['Gleason_masks_test_pathologist1',  # 'Gleason_masks_test_pathologis
 data_dir = 'D:/PycharmProjects/dataverse_files'
 
 
-def load_images(is_train, ori_size, img_size):
+def load_images(is_train, rndcrop_size, resize_size):
     if is_train:
         tar = train_tar
     else:
@@ -59,9 +66,10 @@ def load_images(is_train, ori_size, img_size):
 
     mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, tar)
 
-    xs, ys = [], []
+    xs_crop, ys_crop = [], []
+    xs_norm, ys_norm = [], []
 
-    for m in range(len(mask_fname)):
+    for m in range(len(mask_fname)):  # range(30):  #
         tar_idx = tar.index(os.path.dirname(img_fname[m])) - 1  # excl. train_tar[0] which is the mask folder
         x = img_tar[tar_idx].extractfile(img_fname[m])
         y = mask_tar.extractfile(mask_fname[m])
@@ -69,28 +77,20 @@ def load_images(is_train, ori_size, img_size):
         x = Image.open(x)
         y = Image.open(y)
 
-        # Preprocessing (crop and normalize)
-        # *** randomly crop -> resize, increase sample size
-        width, height = x.size
-        cx = int(width / 2)
-        cy = int(height / 2)
+        # Preprocess image data (random cropping, resizing, normalization)
+        for _ in range(rnd_freq):
+            x_crop, y_crop, x_norm, y_norm = preprocess_image(x, y, rndcrop_size, resize_size)
 
-        roi = (cx - ori_size[0] / 2, cy - ori_size[1] / 2, cx + ori_size[0] / 2, cy + ori_size[1] / 2)
+            xs_crop.append(x_crop)
+            ys_crop.append(y_crop)
+            xs_norm.append(x_norm)
+            ys_norm.append(y_norm)
 
-        x = x.crop(roi)
-        y = y.crop(roi)
+    # imgs = show_img(xs_crop, ys_crop, 100, resize_size)  # num of imgs to show should be a multiple of 4
+    # imgs.show()
 
-        x = x.resize(img_size)
-        y = y.resize(img_size)
-
-        x = np.asarray(x, dtype='float32') / 255.0
-        y = np.asarray(y, dtype='float32') / 255.0
-
-        xs.append(x)
-        ys.append(y)
-
-    x_np = np.asarray(xs)
-    y_np = np.asarray(ys)
+    x_np = np.asarray(xs_norm)
+    y_np = np.asarray(ys_norm)
 
     return x_np, y_np
 
@@ -124,6 +124,41 @@ def match_fname(mask_fname, img_fname):
                 mask_fname_match.append(m)
                 img_fname_match.append(i)
     return mask_fname_match, img_fname_match
+
+
+def preprocess_image(x, y, rndcrop_size, resize_size):
+    # Randomly crop and increase the sample image size
+    # PIL.Image object has a (width, height) tuple of size
+    assert x.size[0] >= rndcrop_size[0]  # width
+    assert x.size[1] >= rndcrop_size[1]  # height
+    assert x.size[0] == y.size[0]
+    assert x.size[1] == y.size[1]
+    width = random.randint(0, x.size[0] - rndcrop_size[0])
+    height = random.randint(0, x.size[1] - rndcrop_size[1])
+    x = x.crop((width, height, (width + rndcrop_size[0]), (height + rndcrop_size[1])))
+    y = y.crop((width, height, (width + rndcrop_size[0]), (height + rndcrop_size[1])))
+
+    # Resize
+    x = x.resize(resize_size)
+    y = y.resize(resize_size)
+
+    # Normalize
+    x_norm = np.asarray(x, dtype='float32') / 255.0
+    y_norm = np.asarray(y, dtype='float32') / 255.0
+    return x, y, x_norm, y_norm
+
+
+def show_img(xs_crop, ys_crop, num_imgs, resize_size):
+    assert num_imgs % 4 == 0
+    rnd_idx = random.randint(0, len(xs_crop)-(num_imgs / 2))
+    xy_show = xs_crop[rnd_idx:rnd_idx+int(num_imgs / 2)] + ys_crop[rnd_idx:rnd_idx+int(num_imgs / 2)]
+    nrow = 4
+    ncol = math.ceil(num_imgs / nrow)
+    imgs = Image.new('RGB', (resize_size[0] * ncol, resize_size[1] * nrow))
+    for i in range(len(xy_show)):
+        px, py = resize_size[0] * int(i % ncol), resize_size[0] * int(i // ncol) * 2
+        imgs.paste(xy_show[i], (px, py))
+    return imgs
 
 
 '''
@@ -165,13 +200,12 @@ def get_mask_fname_dict(mask_fname):
 mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, train_tar)
 '''
 
-
-x_train, y_train = load_images(True, ori_size, img_size)  # 641 images
-x_valid, y_valid = load_images(False, ori_size, img_size)  # 245 images with pathologist1
+x_train, y_train = load_images(True, rndcrop_size, resize_size)  # 641 images
+x_valid, y_valid = load_images(False, rndcrop_size, resize_size)  # 245 images with pathologist1
 
 # Construct U-Net model
 # *** input shape
-input_tensor = Input(shape=img_size + (3,), name='input_tensor')
+input_tensor = Input(shape=resize_size + (3,), name='input_tensor')
 
 # Contracting path
 cont1_1 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_1')(input_tensor)  # 570, 570, 64
@@ -192,7 +226,6 @@ cont4_2 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_2')(cont
 # Expansive path
 # *** UpSampling2D vs. Conv2DTranspose:
 #   ref. https://stackoverflow.com/questions/53654310/what-is-the-difference-between-upsampling2d-and-conv2dtranspose-functions-in-ker
-
 
 expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(cont4_2)  # up-sampling; 104, 104, 256
 cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
@@ -219,7 +252,7 @@ expn4_1 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_1')(expn4
 expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4_1)  # 388, 388, 64
 
 # *** channel number
-output_tensor = Conv2D(20 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_2)
+output_tensor = Conv2D(output_size, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_2)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')

@@ -63,8 +63,8 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 center_crop_size = (216, 216)
 resize_size = (72, 72)
 learning_rate = 0.05  # for u-net, start with larger learning rate
-batch_size = 16
-epochs = 20
+batch_size = 5
+epochs = 5
 
 # Results
 # ==>
@@ -136,6 +136,8 @@ def read_voc_images(voc_dir, img_size, is_train=True):
 
     return xs, ys
 '''
+
+
 # With PIL library
 def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
     """Read all VOC feature and label images."""
@@ -157,9 +159,16 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
         x = x.resize(resize_size)
         y = y.resize(resize_size)
 
-        # normalize
+        # Normalize
+        # Converting pil.image object to np.array would remove the colormap on the ground truth annotations
+        # Thus, the codes below result:
+        # (1) an array of pixel values with [0:20] = class labels incl. background and 255 = border region
+        # (2) pixel values multiplied by 12 for visual purpose
+        # (3) a mask image in grey scale
+        # y_trial = np.asarray(y) * 12  # (1)-(2)
+        # img_y = Image.fromarray(y_trial, 'L'); img_y.show()  # (3)
         x = np.asarray(x, dtype='float32') / 255.0
-        y = np.asarray(y, dtype='float32') / 255.0
+        y = np.asarray(y, dtype='float32')
 
         xs.append(x)
         ys.append(y)
