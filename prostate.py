@@ -28,14 +28,14 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 # Hyper-parameters
 rnd_freq = 10  # number of randomly cropped images to generate
 rndcrop_size = (216, 216)  # W, H
-resize_size = (72, 72)   # W, H
+resize_size = (108, 108)  # (72, 72)   # W, H
 output_size = 5  # output channel size; 5 for harvard dataverse prostate dataset
 learning_rate = 0.05  # for u-net, start with larger learning rate
 batch_size = 16
 epochs = 20
 
 # Results
-# ==>
+# ==> input size: 72*72, learning rate: 0.05, batch size: 16, epochs: 20; acc: ~0.03
 
 # Load Harvard dataverse prostate dataset
 # 1. Download all 15 tar.gz files from the link below:

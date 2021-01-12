@@ -63,11 +63,11 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 center_crop_size = (216, 216)
 resize_size = (72, 72)
 learning_rate = 0.05  # for u-net, start with larger learning rate
-batch_size = 5
-epochs = 5
+batch_size = 16
+epochs = 20
 
 # Results
-# ==>
+# ==> input size: 72*72, learning rate: 0.05, batch size: 16, epochs: 20; acc: ~0.48
 
 # Load the Pascal VOC dataset
 #   1. Download the Pascal VOC dataset and unzip the tar file:
