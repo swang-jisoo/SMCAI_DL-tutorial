@@ -180,6 +180,7 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
 
 
 def crop_center(pil_img, center_crop_size):
+    """ Crop the image to the given size by trimming on all four sides and preserving the center of the image. """
     (crop_width, crop_height) = center_crop_size
     img_width, img_height = pil_img.size
     return pil_img.crop(((img_width - crop_width) // 2,

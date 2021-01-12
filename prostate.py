@@ -28,7 +28,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 # Hyper-parameters
 rnd_freq = 10  # number of randomly cropped images to generate
 rndcrop_size = (216, 216)  # W, H
-resize_size = (108, 108)  # (72, 72)   # W, H
+resize_size = (72, 72)   # W, H
 output_size = 5  # output channel size; 5 for harvard dataverse prostate dataset
 learning_rate = 0.05  # for u-net, start with larger learning rate
 batch_size = 16
@@ -59,11 +59,13 @@ data_dir = 'D:/PycharmProjects/dataverse_files'
 
 
 def load_images(is_train, rndcrop_size, resize_size):
+    """ Load the input images and masks. """
     if is_train:
         tar = train_tar
     else:
         tar = test_tar
 
+    # Get the path to the tar file and the images inside of it (input images and their corresponding mask images)
     mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, tar)
 
     xs_crop, ys_crop = [], []
@@ -96,6 +98,7 @@ def load_images(is_train, rndcrop_size, resize_size):
 
 
 def get_tar_fname(data_dir, tar):
+    """ Get the path to the tar file and the image files inside of it. """
     img_tar, img_fname = [], []
     for t in range(len(tar)):
         tar_fname = os.path.join(data_dir, tar[t] + '.tar.gz')
@@ -111,6 +114,7 @@ def get_tar_fname(data_dir, tar):
 
 
 def match_fname(mask_fname, img_fname):
+    """ Match the image file name and the mask file name. """
     mask_fname_match, img_fname_match = [], []
     for m in mask_fname:
         m_fname_base = os.path.splitext(os.path.basename(m))[0]
@@ -127,6 +131,7 @@ def match_fname(mask_fname, img_fname):
 
 
 def preprocess_image(x, y, rndcrop_size, resize_size):
+    """ Preprocess the image data (Randomly crop, resize, and normalize). """
     # Randomly crop and increase the sample image size
     # PIL.Image object has a (width, height) tuple of size
     assert x.size[0] >= rndcrop_size[0]  # width
@@ -144,11 +149,13 @@ def preprocess_image(x, y, rndcrop_size, resize_size):
 
     # Normalize
     x_norm = np.asarray(x, dtype='float32') / 255.0
-    y_norm = np.asarray(y, dtype='float32') / 255.0
+    y_norm = np.asarray(y, dtype='float32')
     return x, y, x_norm, y_norm
 
 
+# *** Need to be fixed
 def show_img(xs_crop, ys_crop, num_imgs, resize_size):
+    """ Show the pairs of images and corresponding masks. """
     assert num_imgs % 4 == 0
     rnd_idx = random.randint(0, len(xs_crop)-(num_imgs / 2))
     xy_show = xs_crop[rnd_idx:rnd_idx+int(num_imgs / 2)] + ys_crop[rnd_idx:rnd_idx+int(num_imgs / 2)]
