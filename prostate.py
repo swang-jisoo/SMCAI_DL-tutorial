@@ -28,11 +28,11 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 # Hyper-parameters
 rnd_freq = 10  # number of randomly cropped images to generate
 rndcrop_size = (216, 216)  # W, H
-resize_size = (72, 72)   # W, H
+resize_size = (72, 72)  # W, H; multiple of 8
 output_size = 5  # output channel size; 5 for harvard dataverse prostate dataset
 learning_rate = 0.05  # for u-net, start with larger learning rate
 batch_size = 16
-epochs = 20
+epochs = 5
 
 # Results
 # ==> input size: 72*72, learning rate: 0.05, batch size: 16, epochs: 20; acc: ~0.03
@@ -163,7 +163,7 @@ def show_img(xs_crop, ys_crop, num_imgs, resize_size):
     ncol = math.ceil(num_imgs / nrow)
     imgs = Image.new('RGB', (resize_size[0] * ncol, resize_size[1] * nrow))
     for i in range(len(xy_show)):
-        px, py = resize_size[0] * int(i % ncol), resize_size[0] * int(i // ncol) * 2
+        px, py = resize_size[0] * int(i % ncol), resize_size[0] * int(i // ncol)
         imgs.paste(xy_show[i], (px, py))
     return imgs
 
@@ -215,20 +215,28 @@ x_valid, y_valid = load_images(False, rndcrop_size, resize_size)  # 245 images w
 input_tensor = Input(shape=resize_size + (3,), name='input_tensor')
 
 # Contracting path
-cont1_1 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_1')(input_tensor)  # 570, 570, 64
-cont1_2 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_2')(cont1_1)  # 568, 568, 64
+cont1_1 = Conv2D(64, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont1_1')(input_tensor)  # 570, 570, 64
+cont1_2 = Conv2D(64, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont1_2')(cont1_1)  # 568, 568, 64
 
 cont2_dwn = MaxPooling2D((2, 2), strides=2, name='cont2_dwn')(cont1_2)  # down-sampling; 284, 284, 64; 124
-cont2_1 = Conv2D(128, 3, activation='relu', padding='same', name='cont2_1')(cont2_dwn)  # 282, 282, 128
-cont2_2 = Conv2D(128, 3, activation='relu', padding='same', name='cont2_2')(cont2_1)  # 280, 280, 128
+cont2_1 = Conv2D(128, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont2_1')(cont2_dwn)  # 282, 282, 128
+cont2_2 = Conv2D(128, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont2_2')(cont2_1)  # 280, 280, 128
 
 cont3_dwn = MaxPooling2D((2, 2), strides=2, name='cont3_dwn')(cont2_2)  # down-sampling; 140, 140, 128; 60
-cont3_1 = Conv2D(256, 3, activation='relu', padding='same', name='cont3_1')(cont3_dwn)  # 138, 138, 256
-cont3_2 = Conv2D(256, 3, activation='relu', padding='same', name='cont3_2')(cont3_1)  # 136, 136, 256
+cont3_1 = Conv2D(256, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont3_1')(cont3_dwn)  # 138, 138, 256
+cont3_2 = Conv2D(256, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont3_2')(cont3_1)  # 136, 136, 256
 
 cont4_dwn = MaxPooling2D((2, 2), strides=2, name='cont4_dwn')(cont3_2)  # down-sampling; 68, 68, 256; 28
-cont4_1 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_1')(cont4_dwn)  # 66, 66, 256
-cont4_2 = Conv2D(512, 3, activation='relu', padding='same', name='cont4_2')(cont4_1)  # 64, 64, 256
+cont4_1 = Conv2D(512, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont4_1')(cont4_dwn)  # 66, 66, 256
+cont4_2 = Conv2D(512, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='cont4_2')(cont4_1)  # 64, 64, 256
 
 # Expansive path
 # *** UpSampling2D vs. Conv2DTranspose:
@@ -239,24 +247,30 @@ cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn2_crop = Cropping2D(cropping, name='expn2_crop')(cont3_2)  # 104, 104, 256
 expn2_concat = concatenate([expn2_up, expn2_crop], axis=-1, name='expn2_concat')  # 104, 104, 512
-expn2_1 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_1')(expn2_concat)  # 102, 102, 256
-expn2_2 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_2')(expn2_1)  # 100, 100, 256
+expn2_1 = Conv2D(256, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn2_1')(expn2_concat)  # 102, 102, 256
+expn2_2 = Conv2D(256, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn2_2')(expn2_1)  # 100, 100, 256
 
 expn3_up = Conv2DTranspose(128, 2, strides=2, name='expn3_up')(expn2_2)  # up-sampling; 200, 200, 128
 cropping_size = (cont2_2.shape[1] - expn3_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn3_crop = Cropping2D(cropping, name='expn3_crop')(cont2_2)  # 200, 200, 128
 expn3_concat = concatenate([expn3_up, expn3_crop], axis=-1, name='expn3_concat')  # 200, 200, 256
-expn3_1 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_1')(expn3_concat)  # 198, 198, 128
-expn3_2 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_2')(expn3_1)  # 196, 196, 128
+expn3_1 = Conv2D(128, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn3_1')(expn3_concat)  # 198, 198, 128
+expn3_2 = Conv2D(128, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn3_2')(expn3_1)  # 196, 196, 128
 
 expn4_up = Conv2DTranspose(64, 2, strides=2, name='expn4_up')(expn3_2)  # up-sampling; 392, 392, 64
 cropping_size = (cont1_2.shape[1] - expn4_up.shape[1]) // 2
 cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
 expn4_crop = Cropping2D(cropping, name='expn4_crop')(cont1_2)  # 392, 392, 64
 expn4_concat = concatenate([expn4_up, expn4_crop], axis=-1, name='expn4_concat')  # 392, 392, 128
-expn4_1 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_1')(expn4_concat)  # 390, 390, 64
-expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4_1)  # 388, 388, 64
+expn4_1 = Conv2D(64, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn4_1')(expn4_concat)  # 390, 390, 64
+expn4_2 = Conv2D(64, 3, padding='same',
+                 activation='relu', kernel_initializer='he_normal', name='expn4_2')(expn4_1)  # 388, 388, 64
 
 # *** channel number
 output_tensor = Conv2D(output_size, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_2)
