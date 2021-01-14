@@ -48,25 +48,33 @@ epochs = 5
 #       + ZT80_38_A~C.tar.gz: as all together, test images; jpg files
 #       + Gleason_masks_train.tar.gz: train masks; png files
 #       + rest of ZTxx_x_x.tar.gz: as all together, train images; jpg files
+# Note: pathologist1 and 2 provides some of different mask images such as
+# 'Gleason_masks_test_pathologist1/mask1_ZT80_38_A_7_10.png'
+# 'Gleason_masks_test_pathologist2/mask2_ZT80_38_A_7_10.png'
 
 # Check the name matching, since some of the images does not have the corresponding masks
 train_tar = ['Gleason_masks_train', 'ZT76_39_A', 'ZT76_39_B', 'ZT111_4_A', 'ZT111_4_B', 'ZT111_4_C',
              'ZT199_1_A', 'ZT199_1_B', 'ZT204_6_A', 'ZT204_6_B']
-test_tar = ['Gleason_masks_test_pathologist1',  # 'Gleason_masks_test_pathologist2',
+test_tar_1 = ['Gleason_masks_test_pathologist1',  # 'Gleason_masks_test_pathologist2',
+            'ZT80_38_A', 'ZT80_38_B', 'ZT80_38_C']
+test_tar_2 = ['Gleason_masks_test_pathologist2',
             'ZT80_38_A', 'ZT80_38_B', 'ZT80_38_C']
 
 data_dir = 'D:/PycharmProjects/dataverse_files'
 
 
-def load_images(is_train, rndcrop_size, resize_size):
+def load_images(tar, rndcrop_size, resize_size):
     """ Load the input images and masks. """
-    if is_train:
+    '''if is_train:
         tar = train_tar
     else:
-        tar = test_tar
+        tar = test_tar'''
 
     # Get the path to the tar file and the images inside of it (input images and their corresponding mask images)
     mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, tar)
+
+    img_fname.sort()  # img show
+    mask_fname.sort()  # img show
 
     xs_crop, ys_crop = [], []
     xs_norm, ys_norm = [], []
@@ -88,8 +96,12 @@ def load_images(is_train, rndcrop_size, resize_size):
             xs_norm.append(x_norm)
             ys_norm.append(y_norm)
 
-    # imgs = show_img(xs_crop, ys_crop, 100, resize_size)  # num of imgs to show should be a multiple of 4
-    # imgs.show()
+    xy_img = []  # img show
+    xy_img.append(xs_crop)
+    xy_img.append(ys_crop)
+
+    imgs = show_img(xy_img, 10, 6, resize_size)
+    imgs.show()  # img show
 
     x_np = np.asarray(xs_norm)
     y_np = np.asarray(ys_norm)
@@ -154,18 +166,19 @@ def preprocess_image(x, y, rndcrop_size, resize_size):
 
 
 # *** Need to be fixed
-def show_img(xs_crop, ys_crop, num_imgs, resize_size):
-    """ Show the pairs of images and corresponding masks. """
-    assert num_imgs % 4 == 0
-    rnd_idx = random.randint(0, len(xs_crop)-(num_imgs / 2))
-    xy_show = xs_crop[rnd_idx:rnd_idx+int(num_imgs / 2)] + ys_crop[rnd_idx:rnd_idx+int(num_imgs / 2)]
-    nrow = 4
-    ncol = math.ceil(num_imgs / nrow)
-    imgs = Image.new('RGB', (resize_size[0] * ncol, resize_size[1] * nrow))
-    for i in range(len(xy_show)):
-        px, py = resize_size[0] * int(i % ncol), resize_size[0] * int(i // ncol)
-        imgs.paste(xy_show[i], (px, py))
-    return imgs
+def show_img(img_set, ncol, nrow, resize_size):
+    assert nrow % len(img_set) == 0
+    num_imgs = ncol * nrow
+
+    img_table = Image.new('RGB', (resize_size[0] * ncol, resize_size[1] * nrow))
+    rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
+
+    for n in range(num_imgs):
+        px, py = int(n % ncol), int(n // ncol)
+        i, j = py % len(img_set), px + (5 * (py // len(img_set)))
+        img_table.paste(img_set[i][rnd_idx[j]], (resize_size[0] * px, resize_size[0] * py))
+
+    return img_table
 
 
 '''
@@ -207,8 +220,25 @@ def get_mask_fname_dict(mask_fname):
 mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, train_tar)
 '''
 
-x_train, y_train = load_images(True, rndcrop_size, resize_size)  # 641 images
-x_valid, y_valid = load_images(False, rndcrop_size, resize_size)  # 245 images with pathologist1
+x_train, y_train = load_images(train_tar, rndcrop_size, resize_size)  # 641 images
+x_valid_1, y_valid_1 = load_images(test_tar_1, rndcrop_size, resize_size)  # 245 images with pathologist1
+x_valid_2, y_valid_2 = load_images(test_tar_2, rndcrop_size, resize_size)  # 245 images with pathologist2
+
+
+# Shuffle the dataset
+def shuffle_ds(x, y):
+    """ Shuffle the train and test datasets (multi-dimensional array) along the first axis.
+        Modify the order of samples in the datasets, while their contents and matching sequence remains the same. """
+    shuffle_idx = np.arange(x.shape[0])
+    np.random.shuffle(shuffle_idx)
+    x = x[shuffle_idx]
+    y = y[shuffle_idx]
+    return x, y
+
+
+#x_train, y_train = shuffle_ds(x_train, y_train)
+#x_valid_1, y_valid_1 = shuffle_ds(x_valid_1, y_valid_1)
+#x_valid_2, y_valid_2 = shuffle_ds(x_valid_2, y_valid_2)
 
 # Construct U-Net model
 # *** input shape
@@ -287,4 +317,8 @@ u_net.compile(loss='sparse_categorical_crossentropy', optimizer=opt, metrics=['a
 u_net.fit(x_train, y_train, epochs=epochs)
 
 # Test the model with test set
-u_net.evaluate(x_valid, y_valid, verbose=2)
+u_net.evaluate(x_valid_1, y_valid_1, verbose=2)
+u_net.evaluate(x_valid_2, y_valid_2, verbose=2)
+
+#img_1 = u_net.predict(x_valid_1)
+#img_2 = u_net.predict(x_valid_2)
