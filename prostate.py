@@ -48,9 +48,11 @@ epochs = 5
 #       + ZT80_38_A~C.tar.gz: as all together, test images; jpg files
 #       + Gleason_masks_train.tar.gz: train masks; png files
 #       + rest of ZTxx_x_x.tar.gz: as all together, train images; jpg files
-# Note: pathologist1 and 2 provides some of different mask images such as
+# Note: pathologist1 and 2 provides multiple different mask images such as
 # 'Gleason_masks_test_pathologist1/mask1_ZT80_38_A_7_10.png'
 # 'Gleason_masks_test_pathologist2/mask2_ZT80_38_A_7_10.png'
+# According to the relevant paper, the two types of test masks are offered for the qualification of inter-pathologist
+# variability. The first pathologist annotated the training dataset as well. More info can be found in the paper.
 
 # Check the name matching, since some of the images does not have the corresponding masks
 train_tar = ['Gleason_masks_train', 'ZT76_39_A', 'ZT76_39_B', 'ZT111_4_A', 'ZT111_4_B', 'ZT111_4_C',
@@ -73,8 +75,8 @@ def load_images(tar, rndcrop_size, resize_size):
     # Get the path to the tar file and the images inside of it (input images and their corresponding mask images)
     mask_tar, img_tar, mask_fname, img_fname = get_tar_fname(data_dir, tar)
 
-    img_fname.sort()  # img show
-    mask_fname.sort()  # img show
+    #img_fname.sort()  # img show
+    #mask_fname.sort()  # img show
 
     xs_crop, ys_crop = [], []
     xs_norm, ys_norm = [], []
@@ -96,12 +98,12 @@ def load_images(tar, rndcrop_size, resize_size):
             xs_norm.append(x_norm)
             ys_norm.append(y_norm)
 
-    xy_img = []  # img show
-    xy_img.append(xs_crop)
-    xy_img.append(ys_crop)
+    #xy_img = []  # img show
+    #xy_img.append(xs_crop)
+    #xy_img.append(ys_crop)
 
-    imgs = show_img(xy_img, 10, 6, resize_size)
-    imgs.show()  # img show
+    #imgs = show_img(xy_img, 10, 6, resize_size)
+    #imgs.show()  # img show
 
     x_np = np.asarray(xs_norm)
     y_np = np.asarray(ys_norm)
@@ -320,5 +322,5 @@ u_net.fit(x_train, y_train, epochs=epochs)
 u_net.evaluate(x_valid_1, y_valid_1, verbose=2)
 u_net.evaluate(x_valid_2, y_valid_2, verbose=2)
 
-#img_1 = u_net.predict(x_valid_1)
-#img_2 = u_net.predict(x_valid_2)
+img_1 = u_net.predict(x_valid_1)
+img_2 = u_net.predict(x_valid_2)
