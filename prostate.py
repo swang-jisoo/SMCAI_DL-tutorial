@@ -274,38 +274,22 @@ cont4_2 = Conv2D(512, 3, padding='same',
 # *** UpSampling2D vs. Conv2DTranspose:
 #   ref. https://stackoverflow.com/questions/53654310/what-is-the-difference-between-upsampling2d-and-conv2dtranspose-functions-in-ker
 
-expn2_up = Conv2DTranspose(256, 2, strides=2, name='expn2_up')(cont4_2)  # up-sampling; 104, 104, 256
-cropping_size = (cont3_2.shape[1] - expn2_up.shape[1]) // 2
-cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
-expn2_crop = Cropping2D(cropping, name='expn2_crop')(cont3_2)  # 104, 104, 256
-expn2_concat = concatenate([expn2_up, expn2_crop], axis=-1, name='expn2_concat')  # 104, 104, 512
-expn2_1 = Conv2D(256, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn2_1')(expn2_concat)  # 102, 102, 256
-expn2_2 = Conv2D(256, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn2_2')(expn2_1)  # 100, 100, 256
+# Apply activation first, then concat
+expn2_up = Conv2DTranspose(256, 2, strides=2, padding='same',
+                           activation='relu', kernel_initializer='he_normal', name='expn2_up')(cont4_2)  # up-sampling; 104, 104, 256
+expn2_concat = concatenate([expn2_up, cont3_2], axis=-1, name='expn2_concat')  # 104, 104, 512
 
-expn3_up = Conv2DTranspose(128, 2, strides=2, name='expn3_up')(expn2_2)  # up-sampling; 200, 200, 128
-cropping_size = (cont2_2.shape[1] - expn3_up.shape[1]) // 2
-cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
-expn3_crop = Cropping2D(cropping, name='expn3_crop')(cont2_2)  # 200, 200, 128
-expn3_concat = concatenate([expn3_up, expn3_crop], axis=-1, name='expn3_concat')  # 200, 200, 256
-expn3_1 = Conv2D(128, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn3_1')(expn3_concat)  # 198, 198, 128
-expn3_2 = Conv2D(128, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn3_2')(expn3_1)  # 196, 196, 128
+expn3_up = Conv2DTranspose(128, 2, strides=2, padding='same',
+                           activation='relu', kernel_initializer='he_normal', name='expn3_up')(expn2_concat)  # up-sampling; 200, 200, 128
+expn3_concat = concatenate([expn3_up, cont2_2], axis=-1, name='expn3_concat')  # 200, 200, 256
 
-expn4_up = Conv2DTranspose(64, 2, strides=2, name='expn4_up')(expn3_2)  # up-sampling; 392, 392, 64
-cropping_size = (cont1_2.shape[1] - expn4_up.shape[1]) // 2
-cropping = ((cropping_size, cropping_size), (cropping_size, cropping_size))
-expn4_crop = Cropping2D(cropping, name='expn4_crop')(cont1_2)  # 392, 392, 64
-expn4_concat = concatenate([expn4_up, expn4_crop], axis=-1, name='expn4_concat')  # 392, 392, 128
-expn4_1 = Conv2D(64, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn4_1')(expn4_concat)  # 390, 390, 64
-expn4_2 = Conv2D(64, 3, padding='same',
-                 activation='relu', kernel_initializer='he_normal', name='expn4_2')(expn4_1)  # 388, 388, 64
+expn4_up = Conv2DTranspose(64, 2, strides=2, padding='same',
+                           activation='relu', kernel_initializer='he_normal', name='expn4_up')(expn3_concat)  # up-sampling; 392, 392, 64
+expn4_concat = concatenate([expn4_up, cont1_2], axis=-1, name='expn4_concat')  # 392, 392, 128
 
 # *** channel number
-output_tensor = Conv2D(output_size, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_2)
+output_tensor = Conv2D(output_size, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_concat)
+# output_tensor = Conv2DTranspose(output_size, 1, padding='same')(expn4_concat)
 
 # Create a model
 u_net = Model(input_tensor, output_tensor, name='u_net')
