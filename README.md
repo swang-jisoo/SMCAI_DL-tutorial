@@ -3,9 +3,17 @@
 A small project to build Neural Network models for image classification before starting a main project
 
 Dataset used
-- CIFAR10
-- TinyImageNet
+- CIFAR10 
 
 Models in trial
-- VGG-16
-- ResNet-50
+- VGG-16/19
+- ResNet-34/50
+- Inceptionv3 (from scratch/pretrained)
+
+# Image Semantic Segmentation
+Dataset
+- Pascal VOC
+- Harvard Dataverse Prostate
+
+Models
+- U-Net
