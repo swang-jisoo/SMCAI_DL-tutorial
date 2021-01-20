@@ -68,24 +68,42 @@ y_open = np.asarray(y_open)
 
 rndcrop_size = (72,72)
 fname_cut = fname[:71] + fname[97:224] + fname[247:]
-x_train, y_train = [], []
+x_all, y_all = [], []
 for f in fname_cut:
     x = dcmread(os.path.join(img_dir, f + '.dcm')).pixel_array
-    y = Image.open(os.path.join(mask_dir, f + '.png'))
     x = zoom(x, rndcrop_size[0] / x.shape[0])
-    y = y.resize(rndcrop_size)
+    x = x.astype('float32')
+
+    y = Image.open(os.path.join(mask_dir, f + '.png')).convert('L')  # from rgb to greyscale
+    #y = y.point(lambda p: p > 0)  # image thresholding; **** order of thresholding and resize
+    y = y.resize(rndcrop_size)  # default resample = PIL.Image.BICUBIC
+    y = y.point(lambda p: p > 0.5)  # 0 -> 0.5 due to BICUBIC
     y = np.asarray(y, dtype='float32')
 
     '''w_start = (x.shape[0] // 2) - (rndcrop_size[0] // 2)
     h_start = (x.shape[1] // 2) - (rndcrop_size[1] // 2)
     x = x[w_start:w_start + rndcrop_size[0], h_start:h_start + rndcrop_size[1]]
     y = y[w_start:w_start + rndcrop_size[0], h_start:h_start + rndcrop_size[1]]'''
-    x_train.append(x)
-    y_train.append(y)
+    x_all.append(x)
+    y_all.append(y)
 
-x_train = np.asarray(x_train)
-y_train = np.asarray(y_train)
+x_all = np.asarray(x_all)
+y_all = np.asarray(y_all)
 
+
+# Shuffle the dataset
+def shuffle_ds(x, y):
+    """ Shuffle the train and test datasets (multi-dimensional array) along the first axis.
+        Modify the order of samples in the datasets, while their contents and matching sequence remains the same. """
+    shuffle_idx = np.arange(x.shape[0])
+    np.random.shuffle(shuffle_idx)
+    x = x[shuffle_idx]
+    y = y[shuffle_idx]
+    return x, y
+
+x_shf, y_shf = shuffle_ds(x_all, y_all)
+x_train, y_train = x_shf[:-52], y_shf[:-52]
+x_valid, y_valid = x_shf[-52:], y_shf[-52:]
 
 resize_size = rndcrop_size  # W, H; multiple of 8
 output_size = 2
@@ -151,3 +169,26 @@ u_net.compile(loss='sparse_categorical_crossentropy', optimizer=opt, metrics=['a
 
 # Train the model to adjust parameters to minimize the loss
 u_net.fit(x_train, y_train, epochs=epochs)
+
+# Test the model with test set
+u_net.evaluate(x_valid, y_valid, verbose=2)
+
+img = u_net.predict(x_valid)
+img_arg = np.argmax(img, axis=-1)
+img_arg = img_arg[..., tf.newaxis]
+img_arg = img_arg.astype('float32')
+
+x = dcmread('./stroke_dcm/input/0102LAADWI0018.dcm').pixel_array
+x = zoom(x, rndcrop_size[0] / x.shape[0])
+x_t = np.array([x])
+
+y = Image.open('./stroke_dcm/GT/0102LAADWI0018.png').convert('L')
+y = y.resize(rndcrop_size)
+y = y.point(lambda p: p > 0)
+
+img = u_net.predict(x_t)
+img_arg = np.argmax(img, axis=-1)[0]
+
+plt.imshow(x)
+plt.imshow(y)
+plt.imshow(img_arg)
