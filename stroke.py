@@ -3,7 +3,6 @@
 
 # Dataset: stroke dicom files given by park
 # 0 = background, 1 = lesion
-# ==> total 2 output
 
 # Model: U-net
 
@@ -26,18 +25,11 @@ from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, concatenate
 
 # Load stroke dataset
+
 # directory structure
 #   + stroke_dcm
 #       + GT: mask; png files
 #       + input: input image; dcm files
-
-'''
-fpath = './stroke_dcm/input/0102LAADWI0005.dcm'
-ds = dcmread(fpath)
-
-plt.imshow(ds.pixel_array, cmap=plt.cm.gray)
-plt.show()
-'''
 
 mask_dir = 'D:/PycharmProjects/stroke_dcm/GT'
 img_dir = 'D:/PycharmProjects/stroke_dcm/input'
@@ -48,6 +40,7 @@ img_dir = 'D:/PycharmProjects/stroke_dcm/input'
 mask_f.sort()
 img_f.sort()
 
+# filter the file name that exists in both image and mask folders
 fname = []
 for m in mask_f:
     m_base = os.path.splitext(m)[0]
@@ -56,21 +49,24 @@ for m in mask_f:
         if m_base != i_base:
             continue
         fname.append(m_base)
-        #x_np.append(os.path.join(img_dir, i))
-        #y_np.append(os.path.join(mask_dir, m))
 
+# some of images are excluded due to the error below:
 # AttributeError: 'FileMetaDataset' object has no attribute 'TransferSyntaxUID'
 # x_np[71] = './stroke_dcm/input\\281SVODWI0001.dcm'
 # x_np[224] = './stroke_dcm/input\\286SVODWI0001.dcm'
+
+fname_cut = fname[:71] + fname[97:224] + fname[247:]
+
 '''
-x_open = [dcmread(x).pixel_array for x in x_np[:71] + x_np[97:224] + x_np[247:]]
-y_open = [np.asarray(Image.open(y), dtype='float32') for y in y_np[:71] + y_np[97:224] + y_np[247:]]
-x_open = np.asarray(x_open)
-y_open = np.asarray(y_open)
+# files with lesion segmented mask
+fname_cut = ['0102LAADWI0012', '0102LAADWI0013', '0102LAADWI0014', '0102LAADWI0015', '0102LAADWI0016',
+             '0102LAADWI0017', '0102LAADWI0018', '0102LAADWI0019', '0102LAADWI0020', '0102LAADWI0021',
+             '0102LAADWI0022', '0102LAADWI0023', '0120LAADWI0013', '0120LAADWI0014', '0120LAADWI0015',
+             '0120LAADWI0016', '280SVODWI0003', '280SVODWI0014', '281SVODWI0018', '282SVODWI0006',
+             '283SVODWI0017', '283SVODWI0018', '284SVODWI0007', ... etc]
 '''
 
 rndcrop_size = (96, 96)
-fname_cut = fname[:71] + fname[97:224] + fname[247:]
 x_all, y_all = [], []
 for f in fname_cut:
     x = dcmread(os.path.join(img_dir, f + '.dcm')).pixel_array
@@ -82,6 +78,10 @@ for f in fname_cut:
     y = y.resize(rndcrop_size, resample = Image.BICUBIC)  # default resample = PIL.Image.BICUBIC
     y = y.point(lambda p: p > 0.5)  # 0 -> 0.5 due to BICUBIC
     y = np.asarray(y, dtype='float32')
+
+    # collect the masks where lesions are segmented
+    if y.max() == 0.:
+        continue
 
     '''w_start = (x.shape[0] // 2) - (rndcrop_size[0] // 2)
     h_start = (x.shape[1] // 2) - (rndcrop_size[1] // 2)
@@ -104,18 +104,20 @@ def shuffle_ds(x, y):
     y = y[shuffle_idx]
     return x, y
 
-'''x_shf, y_shf = shuffle_ds(x_all, y_all)
-x_train, y_train = x_shf[:-52], y_shf[:-52]
-x_valid, y_valid = x_shf[-52:], y_shf[-52:]'''
 
-x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
-x_valid, y_valid = x_all[-52:], y_all[-52:]
+# set the dataset of 2 patients (last 52 images) as a testset
+#x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
+#x_valid, y_valid = x_all[-52:], y_all[-52:]
+
+# filtered dataset (only incl. lesion segmented images)
+x_train, y_train = shuffle_ds(x_all[:-5], y_all[:-5])
+x_valid, y_valid = x_all[-5:], y_all[-5:]
 
 resize_size = rndcrop_size  # W, H; multiple of 8
 output_size = 1  # binary segmentation
-learning_rate = 0.001  # for u-net, start with larger learning rate
-batch_size = 4
-epochs = 5
+learning_rate = 0.00001  # for u-net, start with larger learning rate
+batch_size = 2
+epochs = 150
 
 # *** input shape
 input_tensor = Input(shape=resize_size + (1,), name='input_tensor')
@@ -203,8 +205,8 @@ img_set.append(x_valid)
 img_set.append(y_valid)
 img_set.append(img)
 
-columns = 10
-rows = 6
+columns = 5
+rows = 3
 
 
 def show_img(img_set, ncol, nrow):
@@ -219,7 +221,6 @@ def show_img(img_set, ncol, nrow):
         fig.add_subplot(rows, columns, n+1)
         px, py = int(n % ncol), int(n // ncol)
         i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
-        print(px, py, i, j)
         plt.imshow(img_set[i][j])
 
     return plt.show()
@@ -242,4 +243,12 @@ img_arg = np.argmax(img, axis=-1)[0]
 plt.imshow(x)
 plt.imshow(y)
 plt.imshow(img_arg)
+'''
+
+'''
+fpath = './stroke_dcm/input/0102LAADWI0005.dcm'
+ds = dcmread(fpath)
+
+plt.imshow(ds.pixel_array, cmap=plt.cm.gray)
+plt.show()
 '''
