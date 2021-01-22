@@ -148,14 +148,14 @@ def preprocess_image(x, y, rndcrop_size, resize_size):
     """ Preprocess the image data (Randomly crop, resize, and normalize). """
     # Randomly crop and increase the sample image size
     # PIL.Image object has a (width, height) tuple of size
-    assert x.size[0] >= rndcrop_size[0]  # width
+    '''assert x.size[0] >= rndcrop_size[0]  # width
     assert x.size[1] >= rndcrop_size[1]  # height
     assert x.size[0] == y.size[0]
     assert x.size[1] == y.size[1]
     width = random.randint(0, x.size[0] - rndcrop_size[0])
     height = random.randint(0, x.size[1] - rndcrop_size[1])
     x = x.crop((width, height, (width + rndcrop_size[0]), (height + rndcrop_size[1])))
-    y = y.crop((width, height, (width + rndcrop_size[0]), (height + rndcrop_size[1])))
+    y = y.crop((width, height, (width + rndcrop_size[0]), (height + rndcrop_size[1])))'''
 
     # Resize
     x = x.resize(resize_size)
@@ -238,9 +238,9 @@ def shuffle_ds(x, y):
     return x, y
 
 
-#x_train, y_train = shuffle_ds(x_train, y_train)
-#x_valid_1, y_valid_1 = shuffle_ds(x_valid_1, y_valid_1)
-#x_valid_2, y_valid_2 = shuffle_ds(x_valid_2, y_valid_2)
+x_train, y_train = shuffle_ds(x_train, y_train)
+x_valid_1, y_valid_1 = shuffle_ds(x_valid_1, y_valid_1)
+x_valid_2, y_valid_2 = shuffle_ds(x_valid_2, y_valid_2)
 
 # Construct U-Net model
 # *** input shape
