@@ -32,14 +32,16 @@ batch_size = 2
 epochs = 150
 
 # Results
-# ==> input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: 0.3306
+# ==> input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: 0.26 ~ 0.33
 # Memory allocation: rescale the image size and reduce the depth of the network
 # Imbalance: 90% of images in the dataset don't have a mask with clearly delineated lesions --> resample the datasets
 # Imbalance: Lesions take up a small portion of the entire image --> change accuracy/crossentropy to dice score/loss
-# Convergence optimization: failed to converge --> lower learning rate & batch size
-#
+# Convergence optimization: failed to converge --> lower learning rate & batch size, higher epochs
+
 
 # Define necessary functions
+'''
+# with images in v5/GT and v5/input folder
 def match_fname(mask_dir, img_dir):
     """ Return the list of file names that exist in both image and mask folders """
     # Get file names in the folder
@@ -66,12 +68,12 @@ def load_images(fname, rndcrop_size):
     """ Load the numpy array of preprocessed image and mask datasets """
     xs, ys = [], []
     for f in fname:
-        # Rescale the input images
+        # Load and rescale the input images
         x = dcmread(os.path.join(img_dir, f + '.dcm')).pixel_array
         x = zoom(x, rndcrop_size[0] / x.shape[0])
         x = x.astype('float32') / 2048.0  # normalization
-
-        # Rescale the mask images
+        
+        # Load and rescale the mask images
         y = Image.open(os.path.join(mask_dir, f + '.png')).convert('L')  # from rgb to greyscale
         y = y.resize(rndcrop_size, resample=Image.BICUBIC)  # default resample = PIL.Image.BICUBIC
         # Make an index for the part of lesions as 1
@@ -83,13 +85,92 @@ def load_images(fname, rndcrop_size):
         if y.max() == 0.:
             continue
 
-        '''
+        """
         # Center crop the image
         w_start = (x.shape[0] // 2) - (rndcrop_size[0] // 2)
         h_start = (x.shape[1] // 2) - (rndcrop_size[1] // 2)
         x = x[w_start:w_start + rndcrop_size[0], h_start:h_start + rndcrop_size[1]]
         y = y[w_start:w_start + rndcrop_size[0], h_start:h_start + rndcrop_size[1]]
-        '''
+        """
+        
+        xs.append(x)
+        ys.append(y)
+
+    xs = np.asarray(xs)
+    ys = np.asarray(ys)
+
+    return xs, ys
+  
+    
+def show_img(img_set, ncol, nrow):
+    """ Plot the list of images consisting of input image, mask, and predicted result """
+    assert nrow % len(img_set) == 0
+    num_imgs = ncol * nrow
+
+    fig = plt.figure(figsize=(8, 8))
+    # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
+
+    for n in range(num_imgs):
+        fig.add_subplot(nrow, ncol, n+1)
+        px, py = int(n % ncol), int(n // ncol)
+        i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
+        plt.imshow(img_set[i][j])
+
+    return plt.show()
+'''
+
+
+# with images in DCM & input folder
+def match_fname(mask_dir, img_dir):
+    """ Return the list of file names that exist in both image and mask folders """
+    # Get file names in the folder
+    (_, _, mask_f) = next(os.walk(mask_dir))
+    (_, _, img_f) = next(os.walk(img_dir))
+
+    mask_f.sort()
+    img_f.sort()
+
+    fname_dwi = []
+    for i in img_f:
+        if 'DWI' in i:
+            f_dwi = os.path.splitext(i)[0]
+            f_adc = f_dwi[:f_dwi.index('DWI')] + 'ADC' + f_dwi[f_dwi.index('DWI') + 3:]
+            if (f_adc + '.tiff' in img_f) and (f_dwi + '.png' in mask_f):
+                fname_dwi.append(f_dwi)
+
+    return fname_dwi
+
+
+def load_images(fname_dwi, rndcrop_size):
+    """ Load the numpy array of preprocessed image and mask datasets """
+    xs, ys = [], []
+    for f in fname_dwi:
+        # Load and rescale the mask images
+        y = Image.open(os.path.join(mask_dir, f + '.png')).convert('L')  # from rgb to greyscale
+        y = y.resize(rndcrop_size, resample=Image.BICUBIC)  # default resample = PIL.Image.BICUBIC
+        # Make an index for the part of lesions as 1
+        # (image thresholding) resize the image first and then apple thresholding
+        y = y.point(lambda p: p > 0.5)  # *** 0.5 due to BICUBIC
+        y = np.asarray(y, dtype='float32')
+
+        # Collect only the masks where lesions are clearly delineated
+        if y.max() == 0.:
+            continue
+
+        # Load and rescale the input images
+        f_adc = f[:f.index('DWI')] + 'ADC' + f[f.index('DWI') + 3:]
+        x_adc = Image.open(os.path.join(img_dir, f_adc + '.tiff'))
+        x_adc = x_adc.resize(rndcrop_size, resample=Image.BICUBIC)
+        x_adc = np.array(x_adc, dtype='float32')
+        # *** normalization
+
+        x_dwi = Image.open(os.path.join(img_dir, f + '.tiff'))
+        x_dwi = x_dwi.resize(rndcrop_size, resample=Image.BICUBIC)
+        x_dwi = np.array(x_dwi, dtype='float32')
+        # *** normalization
+
+        # Concatenate ADC and DWI image
+        x = np.concatenate((x_adc[:, :, np.newaxis], x_dwi[:, :, np.newaxis]), axis=-1)
 
         xs.append(x)
         ys.append(y)
@@ -100,6 +181,29 @@ def load_images(fname, rndcrop_size):
     return xs, ys
 
 
+def show_img(img_set, ncol, nrow):
+    """ Plot the list of images consisting of input image, mask, and predicted result """
+    assert nrow % (len(img_set) + 1) == 0
+    num_imgs = ncol * nrow
+
+    fig = plt.figure(figsize=(8, 8))
+    # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
+
+    for n in range(num_imgs):
+        fig.add_subplot(nrow, ncol, n+1)
+        px, py = int(n % ncol), int(n // ncol)
+        i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
+        if i == 0:
+            plt.imshow(img_set[0][j][:, :, i])
+        elif i == 1:
+            plt.imshow(img_set[0][j][:, :, i])
+        else:
+            plt.imshow(img_set[i][j])
+
+    return plt.show()
+
+
+# Common functions
 def shuffle_ds(x, y):
     """ Shuffle the train and test datasets (multi-dimensional array) along the first axis.
         Modify the order of samples in the datasets, while their contents and matching sequence remains the same. """
@@ -124,33 +228,20 @@ def dice_loss(y_true, y_pred):
     return 1 - dice_score(y_true, y_pred)
 
 
-def show_img(img_set, ncol, nrow):
-    """ Plot the list of images consisting of input image, mask, and predicted result """
-    assert nrow % len(img_set) == 0
-    num_imgs = ncol * nrow
-
-    fig = plt.figure(figsize=(8, 8))
-    # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
-
-    for n in range(num_imgs):
-        fig.add_subplot(nrow, ncol, n+1)
-        px, py = int(n % ncol), int(n // ncol)
-        i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
-        plt.imshow(img_set[i][j])
-
-    return plt.show()
-
-
 # Load the dataset
+'''
+# with images in v5/GT and v5/input folder
 # directory structure
 #   + stroke_dcm
-#       + GT: mask; png files
-#       + input: input image; dcm files
+#       + v2, v3, v5
+#           + DCM: input image (ADC & DWI); tiff files
+#           + GT: mask; png files
+#           + input: input image (DWI); dcm files
 
-mask_dir = 'D:/PycharmProjects/stroke_dcm/GT'
-img_dir = 'D:/PycharmProjects/stroke_dcm/input'
+mask_dir = 'D:/PycharmProjects/stroke_dcm/v5/GT'
+img_dir = 'D:/PycharmProjects/stroke_dcm/v5/input'
 
-# Get the file names to read
+# with v5/GT and v5/input
 fname = match_fname(mask_dir, img_dir)
 fname_cut = fname[:71] + fname[97:224] + fname[247:]
 # Note: some of images are excluded due to the error below:
@@ -158,15 +249,14 @@ fname_cut = fname[:71] + fname[97:224] + fname[247:]
 # e.g.
 # x_np[71] = './stroke_dcm/input\\281SVODWI0001.dcm'
 # x_np[224] = './stroke_dcm/input\\286SVODWI0001.dcm'
-'''
+"""
 # files with lesion segmented mask
 fname_cut = ['0102LAADWI0012', '0102LAADWI0013', '0102LAADWI0014', '0102LAADWI0015', '0102LAADWI0016',
              '0102LAADWI0017', '0102LAADWI0018', '0102LAADWI0019', '0102LAADWI0020', '0102LAADWI0021',
              '0102LAADWI0022', '0102LAADWI0023', '0120LAADWI0013', '0120LAADWI0014', '0120LAADWI0015',
              '0120LAADWI0016', '280SVODWI0003', '280SVODWI0014', '281SVODWI0018', '282SVODWI0006',
              '283SVODWI0017', '283SVODWI0018', '284SVODWI0007', ... etc]
-'''
-
+"""
 # Load the preprocessed image and mask datasets
 x_all, y_all = load_images(fname_cut, rndcrop_size)
 
@@ -178,6 +268,25 @@ x_all, y_all = load_images(fname_cut, rndcrop_size)
 # (the entire dataset only includes the images with clearly delineated lesions on the mask)
 x_train, y_train = shuffle_ds(x_all[:-5], y_all[:-5])
 x_valid, y_valid = x_all[-5:], y_all[-5:]
+'''
+
+# with images in DCM & input folder
+# directory structure
+#   + stroke_dcm
+#       + v2, v3, v5
+#           + DCM: input image (ADC & DWI); tiff files
+#           + GT: mask; png files
+#           + input: input image (DWI); dcm files
+
+mask_dir = 'D:/PycharmProjects/stroke_dcm/v2/GT'
+img_dir = 'D:/PycharmProjects/stroke_dcm/v2/DCM'
+
+# Get the file names to read
+fname_dwi = match_fname(mask_dir, img_dir)
+
+# Load the preprocessed image and mask datasets
+x_all, y_all = load_images(fname_cut, rndcrop_size)
+
 
 
 # Construct U-Net model
