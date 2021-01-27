@@ -24,7 +24,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 
 
 # parameters
-is_DWI_only = False
+is_DWI_only = False  # DWI only if True else ADC + DWI concat
 root_dir = 'C:/Users/SMC/Dropbox/ESUS_ML'
 DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 
@@ -146,21 +146,24 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
     # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
 
     for n in range(num_imgs):
-        fig.add_subplot(nrow, ncol, n+1)
-        px, py = int(n % ncol), int(n // ncol)
+        fig.add_subplot(nrow, ncol, n + 1)
+        j, i = int(n % ncol), int(n // ncol)
         if is_DWI_only:
             assert nrow % len(img_set) == 0
-            i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
             plt.imshow(img_set[i][j])
+            print('img_set[', i, '][', j, ']')
         else:
             assert nrow % (len(img_set) + 1) == 0
-            i, j = py % len(img_set), px + (ncol * (py // len(img_set)))
             if i == 0:
                 plt.imshow(img_set[0][j][:, :, i])
+                print('img_set[0][', j, '][:,:,', i, ']')
             elif i == 1:
                 plt.imshow(img_set[0][j][:, :, i])
-            else:
+                print('img_set[0][', j, '][:,:,', i, ']')
+            elif i > 1:
+                i -= 1
                 plt.imshow(img_set[i][j])
+                print('img_set[', i, '][', j, ']')
 
     return plt.show()
 
