@@ -13,6 +13,7 @@
 
 # Import necessary libraries
 import os
+import re
 import matplotlib.pyplot as plt
 from pydicom import dcmread
 from PIL import Image
@@ -25,10 +26,10 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 
 # parameters
 is_DWI_only = True  # DWI only if True else ADC + DWI concat
-is_subtype = True
-subtypes = ['LAA', 'CE', 'SVO']
-subtype_idx = 1
-is_tiff = True
+is_subtype = True  # specific subtype will be chosen if True else all combined types
+subtypes = ['LAA', 'CE', 'SVO']  # subtypes[subtype_idx]
+subtype_idx = 1  # specify the index if is_subtype == True
+is_tiff = True  # input data will be tiff format if True else dicom format
 
 root_dir = 'C:/Users/SMC/Dropbox/ESUS_ML'
 DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
@@ -38,8 +39,7 @@ DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 # for ADC+DWI, last 11 images (DCM_gtmaker_v3\GT\164CEDWI0011 ~ 21)
 # for ADC+DWI, it contains ce patients only
 # test_idx = 5 if is_DWI_only else 11
-# test_idx[is_DWI_only][is_subtype]
-test_idx = {True: {True: [3, 11, 5], False: 5}, False: {True: [0, 11, 0], False: 11}}
+# test_idx = {True: {True: [3, 11, 5], False: 5}, False: {True: [0, 11, 0], False: 11}}  # test_idx[is_DWI_only][is_subtype]
 
 max_dim = 256
 depth = 4
@@ -47,8 +47,8 @@ depth = 4
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size
 learning_rate = 0.0005
-batch_size = 3
-epochs = 150
+batch_size = 2
+epochs = 50
 output_size = 1  # binary segmentation
 
 # Results
@@ -72,8 +72,8 @@ output_size = 1  # binary segmentation
 def get_matched_fpath(is_DWI_only, folder_dir):
     """ Return a list of path of input images containing 'DWI' in the 'input' folder under the given directory. """
     # Get file names in the folder
-    mask_dir = os.path.join(folder_dir, 'DCM' if is_tiff else 'GT')
-    img_dir = os.path.join(folder_dir, 'input')
+    mask_dir = os.path.join(folder_dir, 'GT')
+    img_dir = os.path.join(folder_dir, 'DCM' if is_tiff else 'input')
     (_, _, mask_f) = next(os.walk(mask_dir))
     (_, _, img_f) = next(os.walk(img_dir))
 
@@ -106,7 +106,7 @@ def separate_subtypes(fname_dwi):
 
 def load_images(is_DWI_only, fname_dwi, rndcrop_size):
     """ Load the numpy array of preprocessed image and mask datasets """
-    xs, ys = [], []
+    fname_pass, xs, ys = [], [], []
     for f in fname_dwi:
         # Load and rescale the mask images
         f_mask = os.path.join(os.path.dirname(os.path.dirname(f)), 'GT',
@@ -121,11 +121,12 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
         # Collect only the masks where lesions are clearly delineated
         if y.max() == 0.:
             continue
+        fname_pass.append(f)
 
         # Load and rescale the input images
         if is_DWI_only:
             if is_tiff:
-                x = Image.open(os.path.join(img_dir, f + '.tiff'))
+                x = Image.open(f)
                 x = x.resize(rndcrop_size, resample=Image.BICUBIC)
                 x = np.array(x, dtype='float32')
                 # *** normalization
@@ -134,21 +135,20 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                 x = zoom(x, rndcrop_size[0] / x.shape[0])  # rescale
                 x = x.astype('float32') / 2048.0  # normalization
         else:
+            f_base = os.path.basename(f)
+            f_adc = os.path.join(os.path.dirname(f),
+                                 f_base[:f_base.index('DWI')] + 'ADC' + f_base[f_base.index('DWI') + 3:])
             if is_tiff:
-                f_adc = f[:f.index('DWI')] + 'ADC' + f[f.index('DWI') + 3:]
-                x_adc = Image.open(os.path.join(img_dir, f_adc + '.tiff'))
+                x_adc = Image.open(f_adc)
                 x_adc = x_adc.resize(rndcrop_size, resample=Image.BICUBIC)
                 x_adc = np.array(x_adc, dtype='float32')
                 # *** normalization
 
-                x_dwi = Image.open(os.path.join(img_dir, f + '.tiff'))
+                x_dwi = Image.open(f)
                 x_dwi = x_dwi.resize(rndcrop_size, resample=Image.BICUBIC)
                 x_dwi = np.array(x_dwi, dtype='float32')
                 # *** normalization
             else:
-                f_base = os.path.basename(f)
-                f_adc = os.path.join(os.path.dirname(f),
-                                     f_base[:f_base.index('DWI')] + 'ADC' + f_base[f_base.index('DWI') + 3:])
                 x_adc = dcmread(f_adc).pixel_array
                 x_adc = zoom(x_adc, rndcrop_size[0] / x_adc.shape[0])  # rescale
                 x_adc = x_adc.astype('float32') / 2048.0  # normalization
@@ -166,7 +166,15 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
     xs = np.asarray(xs)
     ys = np.asarray(ys)
 
-    return xs, ys
+    test_idx = 0
+    pt_idx_last = re.findall('^\d+', os.path.basename(fname_pass[-1]))[0]
+    for i in range(len(fname_pass) - 2, 0, -1):
+        pt_idx = re.findall('^\d+', os.path.basename(f))[0]
+        if pt_idx != pt_idx_last:
+            break
+        test_idx = i
+
+    return test_idx, xs, ys
 
 
 def shuffle_ds(x, y):
@@ -214,7 +222,9 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
                 plt.xticks([]); plt.yticks([])
                 # print('img_set[', i, '][', j, ']')
 
-    data = ('Data: DWI ' if is_DWI_only else 'Data: ADC+DWI ') + ('_' + subtypes[subtype_idx] if is_subtype else None)
+    data = ('TIFF ' if is_tiff else 'DICOM ') + \
+           ('Data: DWI_' if is_DWI_only else 'Data: ADC+DWI_') + \
+           (subtypes[subtype_idx] if is_subtype else None)
     num_data = '(' + str(len(x_train)) + ' in train, ' + str(len(x_valid)) + ' in test) \n'
     network = 'max dim: ' + str(max_dim) + ', depth: ' + str(depth) + '\n'
     param = 'Parameters: ' + str(rndcrop_size) + ', ' + str(learning_rate) + ', ' + str(batch_size) + ', ' + str(epochs) + '\n'
@@ -267,22 +277,27 @@ for dv in DCMv_dir:
     else:
         fname_dwi += get_matched_fpath(is_DWI_only, os.path.join(root_dir, dv))
 
+# Try a part of tiff files
+if is_tiff:
+    fname_dwi = fname_dwi[:round(len(fname_dwi)*0.2)]
+
 # Separate the stroke subtypes
 if is_subtype:
     fname_sub = separate_subtypes(fname_dwi)
 
     # Load the preprocessed image and mask datasets
-    x_all, y_all = load_images(is_DWI_only, fname_sub, rndcrop_size)
+    test_idx, x_all, y_all = load_images(is_DWI_only, fname_sub, rndcrop_size)
 
     # Shuffle the dataset and split into train and test sets
+    '''
     x_train, y_train = shuffle_ds(x_all[:-test_idx[is_DWI_only][is_subtype][subtype_idx]],
                                   y_all[:-test_idx[is_DWI_only][is_subtype][subtype_idx]])
     x_valid, y_valid = x_all[-test_idx[is_DWI_only][is_subtype][subtype_idx]:], \
                        y_all[-test_idx[is_DWI_only][is_subtype][subtype_idx]:]
-
+    '''
 else:
     # Load the preprocessed image and mask datasets
-    x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
+    test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
 
     # Shuffle the dataset and split into train and test sets
     # x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
@@ -290,11 +305,15 @@ else:
 
     # Shuffle the dataset and split into train and test sets
     # The entire dataset only includes the images with clearly delineated lesions on the mask
+    '''
     x_train, y_train = shuffle_ds(x_all[:-test_idx[is_DWI_only][is_subtype]],
                                   y_all[:-test_idx[is_DWI_only][is_subtype]])
     x_valid, y_valid = x_all[-test_idx[is_DWI_only][is_subtype]:], \
                        y_all[-test_idx[is_DWI_only][is_subtype]:]
+    '''
 
+x_train, y_train = shuffle_ds(x_all[:-test_idx], y_all[:-test_idx])
+x_valid, y_valid = x_all[-test_idx:], y_all[-test_idx:]
 
 # Construct U-Net model
 channel = 1 if is_DWI_only else 2
@@ -368,7 +387,8 @@ img_arg = img * 255
 # print(len(x_all), len(y_all))
 
 img_set = [x_valid, y_valid, img]
-ncol = test_idx[is_DWI_only][is_subtype] if not is_subtype else test_idx[is_DWI_only][is_subtype][subtype_idx]
+# ncol = test_idx[is_DWI_only][is_subtype] if not is_subtype else test_idx[is_DWI_only][is_subtype][subtype_idx]
+ncol = test_idx
 nrow = 3 if is_DWI_only else 4
 show_img(is_DWI_only, img_set, ncol, nrow)
 
