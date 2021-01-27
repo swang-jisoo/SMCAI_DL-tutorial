@@ -24,13 +24,22 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 
 
 # parameters
-is_DWI_only = False  # DWI only if True else ADC + DWI concat
+is_DWI_only = True  # DWI only if True else ADC + DWI concat
+is_subtype = True
+subtypes = ['LAA', 'CE', 'SVO']
+subtype_idx = 1
+is_tiff = True
+
 root_dir = 'C:/Users/SMC/Dropbox/ESUS_ML'
 DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 
 # for DWI only, last 5 images belong to one patient who are excluded in the train set (DCM_gtmaker_v5\GT\299SVODWI0013 ~ 17)
+# for DWI only, last 3, 11, 5 images belong to laa, ce, svo patients respectively (laa: v5\GT\0120, ce: v3\GT\164, v5: v5\GT\299)
 # for ADC+DWI, last 11 images (DCM_gtmaker_v3\GT\164CEDWI0011 ~ 21)
-test_idx = 5 if is_DWI_only else 11
+# for ADC+DWI, it contains ce patients only
+# test_idx = 5 if is_DWI_only else 11
+# test_idx[is_DWI_only][is_subtype]
+test_idx = {True: {True: [3, 11, 5], False: 5}, False: {True: [0, 11, 0], False: 11}}
 
 max_dim = 256
 depth = 4
@@ -63,7 +72,7 @@ output_size = 1  # binary segmentation
 def get_matched_fpath(is_DWI_only, folder_dir):
     """ Return a list of path of input images containing 'DWI' in the 'input' folder under the given directory. """
     # Get file names in the folder
-    mask_dir = os.path.join(folder_dir, 'GT')
+    mask_dir = os.path.join(folder_dir, 'DCM' if is_tiff else 'GT')
     img_dir = os.path.join(folder_dir, 'input')
     (_, _, mask_f) = next(os.walk(mask_dir))
     (_, _, img_f) = next(os.walk(img_dir))
@@ -86,6 +95,15 @@ def get_matched_fpath(is_DWI_only, folder_dir):
     return fname_dwi  # {folder_dir: fname_dwi}
 
 
+def separate_subtypes(fname_dwi):
+    fname_sub = []
+    for f_dwi in fname_dwi:
+        f_base = os.path.basename(f_dwi)
+        if subtypes[subtype_idx] in f_base:
+            fname_sub.append(f_dwi)
+    return fname_sub
+
+
 def load_images(is_DWI_only, fname_dwi, rndcrop_size):
     """ Load the numpy array of preprocessed image and mask datasets """
     xs, ys = [], []
@@ -106,35 +124,38 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
 
         # Load and rescale the input images
         if is_DWI_only:
-            x = dcmread(f).pixel_array
-            x = zoom(x, rndcrop_size[0] / x.shape[0])  # rescale
-            x = x.astype('float32') / 2048.0  # normalization
+            if is_tiff:
+                x = Image.open(os.path.join(img_dir, f + '.tiff'))
+                x = x.resize(rndcrop_size, resample=Image.BICUBIC)
+                x = np.array(x, dtype='float32')
+                # *** normalization
+            else:
+                x = dcmread(f).pixel_array
+                x = zoom(x, rndcrop_size[0] / x.shape[0])  # rescale
+                x = x.astype('float32') / 2048.0  # normalization
         else:
-            f_base = os.path.basename(f)
-            f_adc = os.path.join(os.path.dirname(f),
-                                 f_base[:f_base.index('DWI')] + 'ADC' + f_base[f_base.index('DWI') + 3:])
-            x_adc = dcmread(f_adc).pixel_array
-            x_adc = zoom(x_adc, rndcrop_size[0] / x_adc.shape[0])  # rescale
-            x_adc = x_adc.astype('float32') / 2048.0  # normalization
+            if is_tiff:
+                f_adc = f[:f.index('DWI')] + 'ADC' + f[f.index('DWI') + 3:]
+                x_adc = Image.open(os.path.join(img_dir, f_adc + '.tiff'))
+                x_adc = x_adc.resize(rndcrop_size, resample=Image.BICUBIC)
+                x_adc = np.array(x_adc, dtype='float32')
+                # *** normalization
 
-            x_dwi = dcmread(f).pixel_array
-            x_dwi = zoom(x_dwi, rndcrop_size[0] / x_dwi.shape[0])  # rescale
-            x_dwi = x_dwi.astype('float32') / 2048.0  # normalization
+                x_dwi = Image.open(os.path.join(img_dir, f + '.tiff'))
+                x_dwi = x_dwi.resize(rndcrop_size, resample=Image.BICUBIC)
+                x_dwi = np.array(x_dwi, dtype='float32')
+                # *** normalization
+            else:
+                f_base = os.path.basename(f)
+                f_adc = os.path.join(os.path.dirname(f),
+                                     f_base[:f_base.index('DWI')] + 'ADC' + f_base[f_base.index('DWI') + 3:])
+                x_adc = dcmread(f_adc).pixel_array
+                x_adc = zoom(x_adc, rndcrop_size[0] / x_adc.shape[0])  # rescale
+                x_adc = x_adc.astype('float32') / 2048.0  # normalization
 
-            """
-            # NOT TIFF FILES
-            # Load and rescale the input images
-            f_adc = f[:f.index('DWI')] + 'ADC' + f[f.index('DWI') + 3:]
-            x_adc = Image.open(os.path.join(img_dir, f_adc + '.tiff'))
-            x_adc = x_adc.resize(rndcrop_size, resample=Image.BICUBIC)
-            x_adc = np.array(x_adc, dtype='float32')
-            # *** normalization
-    
-            x_dwi = Image.open(os.path.join(img_dir, f + '.tiff'))
-            x_dwi = x_dwi.resize(rndcrop_size, resample=Image.BICUBIC)
-            x_dwi = np.array(x_dwi, dtype='float32')
-            # *** normalization
-            """
+                x_dwi = dcmread(f).pixel_array
+                x_dwi = zoom(x_dwi, rndcrop_size[0] / x_dwi.shape[0])  # rescale
+                x_dwi = x_dwi.astype('float32') / 2048.0  # normalization
 
             # Concatenate ADC and DWI image
             x = np.concatenate((x_adc[:, :, np.newaxis], x_dwi[:, :, np.newaxis]), axis=-1)
@@ -146,6 +167,17 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
     ys = np.asarray(ys)
 
     return xs, ys
+
+
+def shuffle_ds(x, y):
+    """ Shuffle the train and test datasets (multi-dimensional array) along the first axis.
+        Modify the order of samples in the datasets, while their contents and matching sequence remains the same. """
+    shuffle_idx = np.arange(x.shape[0])
+    np.random.shuffle(shuffle_idx)
+    x = x[shuffle_idx]
+    y = y[shuffle_idx]
+
+    return x, y
 
 
 def show_img(is_DWI_only, img_set, ncol, nrow):
@@ -182,7 +214,7 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
                 plt.xticks([]); plt.yticks([])
                 # print('img_set[', i, '][', j, ']')
 
-    data = 'Data: DWI ' if is_DWI_only else 'Data: ADC+DWI '
+    data = ('Data: DWI ' if is_DWI_only else 'Data: ADC+DWI ') + ('_' + subtypes[subtype_idx] if is_subtype else None)
     num_data = '(' + str(len(x_train)) + ' in train, ' + str(len(x_valid)) + ' in test) \n'
     network = 'max dim: ' + str(max_dim) + ', depth: ' + str(depth) + '\n'
     param = 'Parameters: ' + str(rndcrop_size) + ', ' + str(learning_rate) + ', ' + str(batch_size) + ', ' + str(epochs) + '\n'
@@ -190,18 +222,6 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
     fig.suptitle(data + num_data + network + param + metrics)
     fig.tight_layout()
     return plt.show()
-
-
-# Common functions
-def shuffle_ds(x, y):
-    """ Shuffle the train and test datasets (multi-dimensional array) along the first axis.
-        Modify the order of samples in the datasets, while their contents and matching sequence remains the same. """
-    shuffle_idx = np.arange(x.shape[0])
-    np.random.shuffle(shuffle_idx)
-    x = x[shuffle_idx]
-    y = y[shuffle_idx]
-
-    return x, y
 
 
 # Dice score and loss function
@@ -247,17 +267,33 @@ for dv in DCMv_dir:
     else:
         fname_dwi += get_matched_fpath(is_DWI_only, os.path.join(root_dir, dv))
 
-# Load the preprocessed image and mask datasets
-x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
+# Separate the stroke subtypes
+if is_subtype:
+    fname_sub = separate_subtypes(fname_dwi)
 
-# Shuffle the dataset and split into train and test sets
-# x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
-# x_valid, y_valid = x_all[-52:], y_all[-52:]  # (last 2 patients)
+    # Load the preprocessed image and mask datasets
+    x_all, y_all = load_images(is_DWI_only, fname_sub, rndcrop_size)
 
-# Shuffle the dataset and split into train and test sets
-# The entire dataset only includes the images with clearly delineated lesions on the mask
-x_train, y_train = shuffle_ds(x_all[:-test_idx], y_all[:-test_idx])
-x_valid, y_valid = x_all[-test_idx:], y_all[-test_idx:]
+    # Shuffle the dataset and split into train and test sets
+    x_train, y_train = shuffle_ds(x_all[:-test_idx[is_DWI_only][is_subtype][subtype_idx]],
+                                  y_all[:-test_idx[is_DWI_only][is_subtype][subtype_idx]])
+    x_valid, y_valid = x_all[-test_idx[is_DWI_only][is_subtype][subtype_idx]:], \
+                       y_all[-test_idx[is_DWI_only][is_subtype][subtype_idx]:]
+
+else:
+    # Load the preprocessed image and mask datasets
+    x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
+
+    # Shuffle the dataset and split into train and test sets
+    # x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
+    # x_valid, y_valid = x_all[-52:], y_all[-52:]  # (last 2 patients)
+
+    # Shuffle the dataset and split into train and test sets
+    # The entire dataset only includes the images with clearly delineated lesions on the mask
+    x_train, y_train = shuffle_ds(x_all[:-test_idx[is_DWI_only][is_subtype]],
+                                  y_all[:-test_idx[is_DWI_only][is_subtype]])
+    x_valid, y_valid = x_all[-test_idx[is_DWI_only][is_subtype]:], \
+                       y_all[-test_idx[is_DWI_only][is_subtype]:]
 
 
 # Construct U-Net model
@@ -320,6 +356,7 @@ test_result = u_net.evaluate(x_valid, y_valid, verbose=2)
 
 # Generate the predicted result and plot it with the original image and mask
 img = u_net.predict(x_valid)
+
 '''
 img_arg = np.argmax(img, axis=-1)
 img_arg = img_arg[..., tf.newaxis]
@@ -331,7 +368,7 @@ img_arg = img * 255
 # print(len(x_all), len(y_all))
 
 img_set = [x_valid, y_valid, img]
-ncol = 5
+ncol = test_idx[is_DWI_only][is_subtype] if not is_subtype else test_idx[is_DWI_only][is_subtype][subtype_idx]
 nrow = 3 if is_DWI_only else 4
 show_img(is_DWI_only, img_set, ncol, nrow)
 
