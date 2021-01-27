@@ -32,28 +32,31 @@ DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 # for ADC+DWI, last 11 images (DCM_gtmaker_v3\GT\164CEDWI0011 ~ 21)
 test_idx = 5 if is_DWI_only else 11
 
+max_dim = 256
+depth = 4
+
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size
-output_size = 1  # binary segmentation
 learning_rate = 0.0005
 batch_size = 3
 epochs = 150
+output_size = 1  # binary segmentation
 
 # Results
-# ==> data: v5 DWI, input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: 0.26 ~ 0.33
+# ==> data: v5 DWI 53, input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: 0.26 ~ 0.33
 # Memory allocation: rescale the image size and reduce the depth of the network
 # Imbalance: 90% of images in the dataset don't have a mask with clearly delineated lesions --> resample the datasets
 # Imbalance: Lesions take up a small portion of the entire image --> change accuracy/crossentropy to dice score/loss
 # Convergence optimization: failed to converge --> lower learning rate & batch size, higher epochs
 
-# ==> data: all DWI, input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: ~ 0.12
+# ==> data: all DWI 98, input size: 96*96, learning rate: 0.00001, batch size: 2, epochs: 150; dice: ~ 0.12
 # ==> data: all DWI, input size: 96*96, learning rate: 0.00005, batch size: 2, epochs: 150; dice: 0.51
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0001, batch size: 2, epochs: 150; dice: 0.66
-# ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: 0.72
+# ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: ~ 0.75
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 4, epochs: 150; dice: 0.65
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 200; dice: 0.70
 
-# ==> data: ADC+DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: 0.77
+# ==> data: ADC+DWI 45, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: ~0.85
 
 
 # Define necessary functions
@@ -147,8 +150,9 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
 
 def show_img(is_DWI_only, img_set, ncol, nrow):
     """ Plot the list of images consisting of input image, mask, and predicted result """
-    num_imgs = ncol * nrow
     fig = plt.figure(figsize=(8, 8))
+    num_imgs = ncol * nrow
+    ylabels = ['DWI ', 'Ground truth', 'Segmentation'] if is_DWI_only else ['ADC', 'DWI ', 'Ground truth', 'Segmentation']
     # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
 
     for n in range(num_imgs):
@@ -157,20 +161,34 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
         if is_DWI_only:
             assert nrow % len(img_set) == 0
             plt.imshow(img_set[i][j])
-            print('img_set[', i, '][', j, ']')
+            plt.ylabel(ylabels[i]) if j == 0 else None
+            plt.xticks([]); plt.yticks([])
+            # print('img_set[', i, '][', j, ']')
         else:
             assert nrow % (len(img_set) + 1) == 0
             if i == 0:
                 plt.imshow(img_set[0][j][:, :, i])
-                print('img_set[0][', j, '][:,:,', i, ']')
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[0][', j, '][:,:,', i, ']')
             elif i == 1:
                 plt.imshow(img_set[0][j][:, :, i])
-                print('img_set[0][', j, '][:,:,', i, ']')
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[0][', j, '][:,:,', i, ']')
             elif i > 1:
-                i -= 1
-                plt.imshow(img_set[i][j])
-                print('img_set[', i, '][', j, ']')
+                plt.imshow(img_set[i-1][j])
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[', i, '][', j, ']')
 
+    data = 'Data: DWI ' if is_DWI_only else 'Data: ADC+DWI '
+    num_data = '(' + str(len(x_train)) + ' in train, ' + str(len(x_valid)) + ' in test) \n'
+    network = 'max dim: ' + str(max_dim) + ', depth: ' + str(depth) + '\n'
+    param = 'Parameters: ' + str(rndcrop_size) + ', ' + str(learning_rate) + ', ' + str(batch_size) + ', ' + str(epochs) + '\n'
+    metrics = 'Test dice loss & score: ' + str(round(test_result[0], 4)) + ', ' + str(round(test_result[1], 4))
+    fig.suptitle(data + num_data + network + param + metrics)
+    fig.tight_layout()
     return plt.show()
 
 
@@ -298,7 +316,7 @@ u_net.compile(loss=dice_loss, optimizer=opt, metrics=[dice_score])
 u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
-u_net.evaluate(x_valid, y_valid, verbose=2)
+test_result = u_net.evaluate(x_valid, y_valid, verbose=2)
 
 # Generate the predicted result and plot it with the original image and mask
 img = u_net.predict(x_valid)
