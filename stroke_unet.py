@@ -28,6 +28,10 @@ is_DWI_only = False  # DWI only if True else ADC + DWI concat
 root_dir = 'C:/Users/SMC/Dropbox/ESUS_ML'
 DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 
+# for DWI only, last 5 images belong to one patient who are excluded in the train set (DCM_gtmaker_v5\GT\299SVODWI0013 ~ 17)
+# for ADC+DWI, last 11 images (DCM_gtmaker_v3\GT\164CEDWI0011 ~ 21)
+test_idx = 5 if is_DWI_only else 11
+
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size
 output_size = 1  # binary segmentation
@@ -48,6 +52,8 @@ epochs = 150
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: 0.72
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 4, epochs: 150; dice: 0.65
 # ==> data: all DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 200; dice: 0.70
+
+# ==> data: ADC+DWI, input size: 96*96, learning rate: 0.0005, batch size: 3, epochs: 150; dice: 0.77
 
 
 # Define necessary functions
@@ -232,9 +238,8 @@ x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
 
 # Shuffle the dataset and split into train and test sets
 # The entire dataset only includes the images with clearly delineated lesions on the mask
-# The last 5 images belongs to one patient who does not included in the train set (DCM_gtmaker_v5\GT\299SVODWI0013 ~ 17)
-x_train, y_train = shuffle_ds(x_all[:-5], y_all[:-5])
-x_valid, y_valid = x_all[-5:], y_all[-5:]
+x_train, y_train = shuffle_ds(x_all[:-test_idx], y_all[:-test_idx])
+x_valid, y_valid = x_all[-test_idx:], y_all[-test_idx:]
 
 
 # Construct U-Net model
