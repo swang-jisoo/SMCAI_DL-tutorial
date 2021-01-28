@@ -28,7 +28,7 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 is_DWI_only = True  # DWI only if True else ADC + DWI concat
 is_subtype = True  # specific subtype will be chosen if True else all combined types
 subtypes = ['LAA', 'CE', 'SVO']  # subtypes[subtype_idx]
-subtype_idx = 1  # specify the index if is_subtype == True
+subtype_idx = 0  # specify the index if is_subtype == True
 is_tiff = True  # input data will be tiff format if True else dicom format
 
 root_dir = 'C:/Users/SMC/Dropbox/ESUS_ML'
@@ -47,8 +47,8 @@ depth = 4
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size
 learning_rate = 0.0005
-batch_size = 2
-epochs = 50
+batch_size = 5
+epochs = 30
 output_size = 1  # binary segmentation
 
 # Results
@@ -105,7 +105,11 @@ def separate_subtypes(fname_dwi):
 
 
 def load_images(is_DWI_only, fname_dwi, rndcrop_size):
-    """ Load the numpy array of preprocessed image and mask datasets """
+    """
+    Load the numpy array of preprocessed image and mask datasets
+    :returns
+    -
+    """
     fname_pass, xs, ys = [], [], []
     for f in fname_dwi:
         # Load and rescale the mask images
@@ -121,6 +125,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
         # Collect only the masks where lesions are clearly delineated
         if y.max() == 0.:
             continue
+        # Contains the file paths of DWI images that have lesion segmented masks
         fname_pass.append(f)
 
         # Load and rescale the input images
@@ -166,15 +171,16 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
     xs = np.asarray(xs)
     ys = np.asarray(ys)
 
+    # Get the number of images belonging to last patient in fname_pass to put in test set
     test_idx = 0
     pt_idx_last = re.findall('^\d+', os.path.basename(fname_pass[-1]))[0]
     for i in range(len(fname_pass) - 2, 0, -1):
-        pt_idx = re.findall('^\d+', os.path.basename(f))[0]
+        pt_idx = re.findall('^\d+', os.path.basename(fname_pass[i]))[0]
         if pt_idx != pt_idx_last:
             break
-        test_idx = i
+        test_idx = len(fname_pass) - i
 
-    return test_idx, xs, ys
+    return fname_pass, test_idx, xs, ys
 
 
 def shuffle_ds(x, y):
@@ -192,7 +198,7 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
     """ Plot the list of images consisting of input image, mask, and predicted result """
     fig = plt.figure(figsize=(8, 8))
     num_imgs = ncol * nrow
-    ylabels = ['DWI ', 'Ground truth', 'Segmentation'] if is_DWI_only else ['ADC', 'DWI ', 'Ground truth', 'Segmentation']
+    ylabels = ['DWI ', 'Ground truth', 'AI prediction'] if is_DWI_only else ['ADC', 'DWI ', 'Ground truth', 'AI prediction']
     # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
 
     for n in range(num_imgs):
@@ -278,15 +284,15 @@ for dv in DCMv_dir:
         fname_dwi += get_matched_fpath(is_DWI_only, os.path.join(root_dir, dv))
 
 # Try a part of tiff files
-if is_tiff:
-    fname_dwi = fname_dwi[:round(len(fname_dwi)*0.2)]
+'''if is_tiff:
+    fname_dwi = fname_dwi[:round(len(fname_dwi)*0.2)]'''
 
 # Separate the stroke subtypes
 if is_subtype:
     fname_sub = separate_subtypes(fname_dwi)
 
     # Load the preprocessed image and mask datasets
-    test_idx, x_all, y_all = load_images(is_DWI_only, fname_sub, rndcrop_size)
+    fname_pass, test_idx, x_all, y_all = load_images(is_DWI_only, fname_sub, rndcrop_size)
 
     # Shuffle the dataset and split into train and test sets
     '''
@@ -297,7 +303,7 @@ if is_subtype:
     '''
 else:
     # Load the preprocessed image and mask datasets
-    test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
+    fname_pass, test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)  # 98 = 0+45+53
 
     # Shuffle the dataset and split into train and test sets
     # x_train, y_train = shuffle_ds(x_all[:-52], y_all[:-52])
@@ -376,22 +382,19 @@ test_result = u_net.evaluate(x_valid, y_valid, verbose=2)
 # Generate the predicted result and plot it with the original image and mask
 img = u_net.predict(x_valid)
 
-'''
-img_arg = np.argmax(img, axis=-1)
-img_arg = img_arg[..., tf.newaxis]
-img_arg = img_arg.astype('float32')
-img_arg = img * 255
-'''
-
-# print(len(fname_dwi))
-# print(len(x_all), len(y_all))
-
+# Plot the test result
 img_set = [x_valid, y_valid, img]
 # ncol = test_idx[is_DWI_only][is_subtype] if not is_subtype else test_idx[is_DWI_only][is_subtype][subtype_idx]
 ncol = test_idx
 nrow = 3 if is_DWI_only else 4
 show_img(is_DWI_only, img_set, ncol, nrow)
 
+'''
+img_arg = np.argmax(img, axis=-1)
+img_arg = img_arg[..., tf.newaxis]
+img_arg = img_arg.astype('float32')
+img_arg = img * 255
+'''
 '''
 fpath = './stroke_dcm/input/0102LAADWI0005.dcm'
 ds = dcmread(fpath)
