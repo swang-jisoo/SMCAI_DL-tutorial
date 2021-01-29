@@ -62,7 +62,7 @@ test_tar_1 = ['Gleason_masks_test_pathologist1',  # 'Gleason_masks_test_patholog
 test_tar_2 = ['Gleason_masks_test_pathologist2',
             'ZT80_38_A', 'ZT80_38_B', 'ZT80_38_C']
 
-data_dir = 'D:/PycharmProjects/dataverse_files'
+data_dir = 'D:/PycharmProjects/harvard_dataverse_prostate'
 
 
 def load_images(tar, rndcrop_size, resize_size):
