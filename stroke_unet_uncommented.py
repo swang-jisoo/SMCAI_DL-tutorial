@@ -28,12 +28,13 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 
 # parameters
 is_DWI_only = False  # DWI only if True else ADC + DWI concat
-is_subtype = False  # specific subtype will be chosen if True else all combined types
+is_subtype = True  # specific subtype will be chosen if True else all combined types
 subtypes = ['LAA', 'CE', 'SVO']  # subtypes[subtype_idx]
 subtype_idx = 1  # specify the index if is_subtype == True
 # is_tiff = True  # input data will be tiff format if True else dicom format
 
 root_dir = 'D:/Dropbox/ESUS_ML/SSAI_STROKE'
+#root_dir = 'F:\SSAI_STROKE'
 # DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 
 # for DWI only, last 5 images belong to one patient who are excluded in the train set (DCM_gtmaker_v5\GT\299SVODWI0013 ~ 17)
@@ -50,9 +51,9 @@ pt_test_num = 4
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size if rndcrop_size != None else (512, 512)
 img_thld = 0.5
-learning_rate = 0.0001
-batch_size = 8
-epochs = 100
+learning_rate = 0.0005
+batch_size = 3
+epochs = 30
 output_size = 1  # binary segmentation
 
 # Results
@@ -79,6 +80,27 @@ output_size = 1  # binary segmentation
 # *** ==> DWI 단독이나 ADC와 합쳤을 때나 결과 비슷함
 
 # With the entire dataset
+# * 공통:
+# - TRAIN DATA: mask에 병변부위 표시된 데이터만 입력, data size = 96*96
+# - TEST DATA: all images belonging to the last pts not in train data; if num of images < 4, add one more pt's images
+# - NETWORK: U-net, dimension = max. 256, depth = 4
+# (1-1) ADC+DWI_LAA
+# : data = 1360+4, learning rate = 0.0001, batch size = 2, epochs = 30 ==> test dice score = 0.62 (테스트 환자 2명)
+# (1-2) ADC+DWI_CE
+# : data = 1953+7, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.78 (테스트 환자 1명)
+# (1-3) ADC+DWI_SVO
+# : data = 518+4, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.77 (테스트 환자 2명)
+
+# ==> 테스트 데이터 변경
+# - TEST DATA: 테스트 환자 수 4명으로 늘려서 결과 확인하고, 랜덤하게 10개 이미지 뽑아서 plot
+# (1) ADC + DWI_all  # 8534 (8480+54)
+# : data = 8480+54, learning rate = 0.001, batch size = 16, epochs = 20 ==> test dice score = 0.88 (테스트 환자 12명)
+# (1-1) ADC+DWI_LAA
+# : data = 1343+21, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.87 (테스트 환자 4명)
+# (1-2) ADC+DWI_CE
+# : data = 1933+27, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.84 (테스트 환자 4명)
+# (1-3) ADC+DWI_SVO
+# : data = 516+6, learning rate = 0.000005, batch size = 2, epochs = 100 ==> test dice score = 0.46 (테스트 환자 4명)
 
 
 # Define necessary functions
@@ -260,7 +282,7 @@ def shuffle_ds(x, y, z = None):
     np.random.shuffle(shuffle_idx)
     x = x[shuffle_idx]
     y = y[shuffle_idx]
-    if z:
+    if type(z).__module__ == np.__name__:
         z = z[shuffle_idx]
 
     return x, y, z
@@ -310,6 +332,7 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
     fig.suptitle(data + num_data + network + param)  #+ metrics)
     fig.tight_layout()
 
+    fig.set_size_inches(15, 7)
     plt.savefig('stroke_w_lesion__' +
                 ('DWI-' if is_DWI_only else 'ADCDWI-') +
                 (subtypes[subtype_idx] if is_subtype else 'all') +
@@ -372,9 +395,9 @@ else:
             x_train, y_train = x_all[:-t_idx], y_all[:-t_idx]
             x_valid, y_valid = x_all[-t_idx:], y_all[-t_idx:]
         else:
-            a, b, t_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
-            fname_pass += a
-            pt_test.update(b)
+            f_pass, pt_test, t_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
+            fname_pass += f_pass
+            # pt_test.update(b)
             test_idx.append(t_idx)
 
             # fname_pass, pt_test, test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
@@ -493,10 +516,10 @@ opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
 u_net.compile(loss=dice_loss, optimizer=opt, metrics=[dice_score])
 
 # Train the model to adjust parameters to minimize the loss
-u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
+u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, validation_data=(x_valid, y_valid))
 
 # Test the model with test set
-test_result = u_net.evaluate(x_valid, y_valid, verbose=2)
+test_result = u_net.evaluate(x_valid, y_valid, verbose=1)
 
 # Generate the predicted result and plot it with the original image and mask
 img = u_net.predict(x_valid)
