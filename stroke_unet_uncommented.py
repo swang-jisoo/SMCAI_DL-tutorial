@@ -27,14 +27,14 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, conca
 
 
 # parameters
-is_DWI_only = False  # DWI only if True else ADC + DWI concat
-is_subtype = True  # specific subtype will be chosen if True else all combined types
-subtypes = ['LAA', 'CE', 'SVO']  # subtypes[subtype_idx]
-subtype_idx = 1  # specify the index if is_subtype == True
-# is_tiff = True  # input data will be tiff format if True else dicom format
+is_DWI_only = False  # DWI only if True else ADC+DWI
+is_subtype = True  # one subtype only chosen by subtypes[subtype_idx] if True else all subtypes
+subtypes = ['LAA', 'CE', 'SVO']
+subtype_idx = 1
+# is_tiff = True  # input data format == tiff if True else dicom
 
 root_dir = 'D:/Dropbox/ESUS_ML/SSAI_STROKE'
-#root_dir = 'F:\SSAI_STROKE'
+# root_dir = 'F:\SSAI_STROKE'
 # DCMv_dir = ['DCM_gtmaker_v2_release', 'DCM_gtmaker_v3', 'DCM_gtmaker_v5']
 
 # for DWI only, last 5 images belong to one patient who are excluded in the train set (DCM_gtmaker_v5\GT\299SVODWI0013 ~ 17)
@@ -49,9 +49,10 @@ depth = 4
 pt_test_num = 4
 
 rndcrop_size = (96, 96)
-resize_size = rndcrop_size if rndcrop_size != None else (512, 512)
+resize_size = rndcrop_size if isinstance(rndcrop_size, tuple) else (512, 512)
 img_thld = 0.5
-learning_rate = 0.0005
+huber_weight = 10
+learning_rate = 0.00005
 batch_size = 3
 epochs = 30
 output_size = 1  # binary segmentation
@@ -75,11 +76,11 @@ output_size = 1  # binary segmentation
 # (1-1) DWI_LAA : data = 15, learning rate = 0.0005, batch size = 3, epochs = 150 ==> test dice score = 0.25
 # (1-2) DWI_CE *** : data = 45, learning rate = 0.0005, batch size = 3, epochs = 150 ==> test dice score = 0.84
 # (1-3) DWI_SVO : data = 38, learning rate = 0.0000005, batch size = 2, epochs = 150 ==> test dice score = 0.21
-# (2) ADC+DWI_all (CE타입만 있음) *** : data = 45, learning rate = 0.0005, batch size = 3, epochs = 150 ==> test dice score = 0.85
-# *** ==> DWI 절반 가량의 데이터가 CE환자; 다른 타입과 별개로 구분하여 학습할 때 더 좋은 결과
-# *** ==> DWI 단독이나 ADC와 합쳤을 때나 결과 비슷함
+# (2) ADC+DWI_all (CE type only) *** : data = 45, learning rate = 0.0005, batch size = 3, epochs = 150 ==> test dice score = 0.85
+# *** ==> a half of DWI only data is CE; DWI 절반 가량의 데이터가 CE환자; 다른 타입과 별개로 구분하여 학습할 때 더 좋은 결과
+# *** ==> almost identical results with DWI and ADC+DWI
 
-# With the entire dataset
+# with the entire dataset
 # * 공통:
 # - TRAIN DATA: mask에 병변부위 표시된 데이터만 입력, data size = 96*96
 # - TEST DATA: all images belonging to the last pts not in train data; if num of images < 4, add one more pt's images
@@ -91,17 +92,22 @@ output_size = 1  # binary segmentation
 # (1-3) ADC+DWI_SVO
 # : data = 518+4, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.77 (테스트 환자 2명)
 
-# ==> 테스트 데이터 변경
-# - TEST DATA: 테스트 환자 수 4명으로 늘려서 결과 확인하고, 랜덤하게 10개 이미지 뽑아서 plot
-# (1) ADC + DWI_all  # 8534 (8480+54)
-# : data = 8480+54, learning rate = 0.001, batch size = 16, epochs = 20 ==> test dice score = 0.88 (테스트 환자 12명)
+# ==> with the entire dataset; increase the test set
+# - TEST DATA: increase to 4 patients as test set and randomly plot 10 images among them
+# (1) ADC + DWI_all
+# : data = 3792+54, learning rate = 0.001, batch size = 16, epochs = 20 ==> test dice score = 0.81 (테스트 환자 12명)
 # (1-1) ADC+DWI_LAA
 # : data = 1343+21, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.87 (테스트 환자 4명)
 # (1-2) ADC+DWI_CE
 # : data = 1933+27, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.84 (테스트 환자 4명)
 # (1-3) ADC+DWI_SVO
 # : data = 516+6, learning rate = 0.000005, batch size = 2, epochs = 100 ==> test dice score = 0.46 (테스트 환자 4명)
-
+# (2) DWI_all subtype
+# : data = 3816+54, learning rate = 0.001, batch size = 16, epochs = 20 ==> test dice score = 0.81 (테스트 환자 12명)
+# (2-1) DWI_LAA
+# : data = 1346+21, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.88 (테스트 환자 4명)
+# (2-2) DWI_CE
+# : data = 1951+27, learning rate = 0.0001, batch size = 3, epochs = 30 ==> test dice score = 0.81 (테스트 환자 4명)
 
 # Define necessary functions
 def get_matched_fpath(is_DWI_only, mask_dir, img_dir):
@@ -152,7 +158,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
             f_mask = os.path.join(os.path.dirname(os.path.dirname(f)), 'GT',
                                   os.path.splitext(os.path.basename(f))[0] + '.png')
             y = Image.open(f_mask).convert('L')  # from rgb to greyscale
-            if rndcrop_size != None:
+            if isinstance(rndcrop_size, tuple):
                 y = y.resize(rndcrop_size, resample=Image.BICUBIC)  # default resample = PIL.Image.BICUBIC
             # Make an index for the part of lesions as 1
             # (image thresholding) resize the image first and then apple thresholding
@@ -177,7 +183,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                 '''
                 try:
                     x = dcmread(f).pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x = zoom(x, rndcrop_size[0] / x.shape[0])  # rescale
                     x = x.astype('float32') / 2048.0  # normalization
                 except AttributeError:
@@ -185,7 +191,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                     x = dcmread(f)
                     x.file_meta.TransferSyntaxUID = uid.ImplicitVRLittleEndian
                     x = x.pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x = zoom(x, rndcrop_size[0] / x.shape[0])  # rescale
                     x = x.astype('float32') / 2048.0  # normalization
             else:
@@ -207,7 +213,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                 '''
                 try:
                     x_adc = dcmread(f_adc).pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x_adc = zoom(x_adc, rndcrop_size[0] / x_adc.shape[0])  # rescale
                     x_adc = x_adc.astype('float32') / 2048.0  # normalization
                 except AttributeError:
@@ -215,13 +221,13 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                     x_adc = dcmread(f_adc)
                     x_adc.file_meta.TransferSyntaxUID = uid.ImplicitVRLittleEndian
                     x_adc = x_adc.pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x_adc = zoom(x_adc, rndcrop_size[0] / x_adc.shape[0])  # rescale
                     x_adc = x_adc.astype('float32') / 2048.0  # normalization
 
                 try:
                     x_dwi = dcmread(f).pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x_dwi = zoom(x_dwi, rndcrop_size[0] / x_dwi.shape[0])  # rescale
                     x_dwi = x_dwi.astype('float32') / 2048.0  # normalization
                 except AttributeError:
@@ -229,7 +235,7 @@ def load_images(is_DWI_only, fname_dwi, rndcrop_size):
                     x_dwi = dcmread(f)
                     x_dwi.file_meta.TransferSyntaxUID = uid.ImplicitVRLittleEndian
                     x_dwi = x_dwi.pixel_array
-                    if rndcrop_size != None:
+                    if isinstance(rndcrop_size, tuple):
                         x_dwi = zoom(x_dwi, rndcrop_size[0] / x_dwi.shape[0])  # rescale
                     x_dwi = x_dwi.astype('float32') / 2048.0  # normalization
 
@@ -338,7 +344,7 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
                 (subtypes[subtype_idx] if is_subtype else 'all') +
                 ('-' + str(len(x_train)) + '+' + str(len(x_valid))) +
                 ('__net-' + str(max_dim) + '.' + str(depth)) +
-                ('__' + ((str(rndcrop_size[0]) + '.' + str(rndcrop_size[1]) if rndcrop_size != None else str(rndcrop_size))) +
+                ('__' + ((str(rndcrop_size[0]) + '.' + str(rndcrop_size[1]) if isinstance(rndcrop_size, tuple) else str(rndcrop_size))) +
                  '_' + str(learning_rate) + '_' + str(batch_size) + '_' +  str(epochs)) + '.png')  # +
                 # ('__dice-' + str(round(test_result[1], 4))) + '.png')
 
@@ -351,13 +357,13 @@ def dice_score(y_true, y_pred):
     numerator = 2. * tf.reduce_sum(y_true * y_pred)
     denominator = tf.reduce_sum(y_true + y_pred)
     # tf.print(numerator, denominator)
-    return tf.reduce_mean(numerator / (denominator+1))
+    return tf.reduce_mean(numerator / (denominator + 1))
 
 
 def dice_loss(y_true, y_pred):
-    return 1 - dice_score(y_true, y_pred)
-
-
+    huber = tf.losses.Huber()
+    huber = huber(y_true, y_pred)
+    return 1 - dice_score(y_true, y_pred) + huber_weight*huber
 
 
 # Load the dataset
@@ -371,11 +377,11 @@ def dice_loss(y_true, y_pred):
 #           + Control: 17,610 images; originally from DATA set
 
 # Get DWI image paths
-fname_dwi = []  # 720 = 74+121+525
+# fname_dwi = []  # 720 = 74+121+525
 mask_dir = os.path.join(root_dir, 'GT')
 if is_subtype:
     img_dir = os.path.join(root_dir, subtypes[subtype_idx])
-    fname_dwi += get_matched_fpath(is_DWI_only, mask_dir, img_dir)
+    fname_dwi = get_matched_fpath(is_DWI_only, mask_dir, img_dir)
     fname_pass, pt_test, test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
 
     # fname_pass, pt_test, test_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
@@ -386,7 +392,7 @@ else:
     test_idx = []
     for sub in subtypes:
         img_dir = os.path.join(root_dir, sub)
-        fname_dwi += get_matched_fpath(is_DWI_only, mask_dir, img_dir)
+        fname_dwi = get_matched_fpath(is_DWI_only, mask_dir, img_dir)
         if sub == 'LAA':
             fname_pass, pt_test, t_idx, x_all, y_all = load_images(is_DWI_only, fname_dwi, rndcrop_size)
             test_idx.append(t_idx)
@@ -539,6 +545,35 @@ nrow = 3 if is_DWI_only else 4
 show_img(is_DWI_only, img_set, ncol, nrow)
 
 
+#####
+plt.pcolor(img[0][:,:,0])
+#####
+from matplotlib.colors import Normalize, LinearSegmentedColormap
+
+# transparency
+alphas = Normalize(0, .3, clip=True)(np.abs(img[0][:,:,0]))
+alphas = np.clip(alphas, .4, 1)
+
+fig, ax = plt.subplots()
+ax.imshow(x_valid[0][:,:,0])
+ax.imshow(img[0], alpha=alphas)
+
+# colormap + transparency
+ncolors = 256
+color_array = plt.get_cmap('jet')(range(ncolors))
+color_array[:,-1] = np.linspace(0.0, 1.0, ncolors)
+map_object = LinearSegmentedColormap.from_list(name='rainbow_alpha',colors=color_array)
+plt.register_cmap(cmap=map_object)
+
+
+fig, ax = plt.subplots()
+ax.imshow(x_valid[0][:,:,0], cmap=plt.cm.gray)
+h = ax.imshow(img[0], cmap='rainbow_alpha')
+plt.colorbar(mappable=h)
+
+# outline
+ax.contour(img[0][:,:,0], levels=[-.1, .1], colors='k', linestyles='-')  # darker background
+ax.set_axis_off()
 
 
 '''
