@@ -401,8 +401,8 @@ def show_topographic(is_DWI_only, img_set, ncol, nrow):
     num_data = ' (' + str(len(x_train)) + ' in train, ' + str(len(x_valid)) + ' in test) \n'
     network = 'max dim: ' + str(max_dim) + ', depth: ' + str(depth) + '\n'
     param = 'Parameters: ' + str(rndcrop_size) + ', ' + str(learning_rate) + ', ' + str(batch_size) + ', ' + str(epochs) + '\n'
-    # metrics = 'Test dice loss & score: ' + str(round(test_result[0], 4)) + ', ' + str(round(test_result[1], 4))
-    fig.suptitle(data + num_data + network + param)  #+ metrics)
+    metrics = 'Huber weight: ' + str(huber_weight) + '\nTest dice loss & score: ' + str(round(test_result[0], 4)) + ', ' + str(round(test_result[1], 4))
+    fig.suptitle(data + num_data + network + param + metrics)
     fig.tight_layout()
 
     fig.set_size_inches(15, 7)
@@ -412,8 +412,8 @@ def show_topographic(is_DWI_only, img_set, ncol, nrow):
                 ('-' + str(len(x_train)) + '+' + str(len(x_valid))) +
                 ('__net-' + str(max_dim) + '.' + str(depth)) +
                 ('__' + ((str(rndcrop_size[0]) + '.' + str(rndcrop_size[1]) if isinstance(rndcrop_size, tuple) else str(rndcrop_size))) +
-                 '_' + str(learning_rate) + '_' + str(batch_size) + '_' +  str(epochs)) + '.png')  # +
-                # ('__dice-' + str(round(test_result[1], 4))) + '.png')
+                 '_' + str(learning_rate) + '_' + str(batch_size) + '_' +  str(epochs)) +
+                ('__huberW-' + str(huber_weight) + '__dice-' + str(round(test_result[1], 4))) + '.png')
 
     return plt.show()
 
