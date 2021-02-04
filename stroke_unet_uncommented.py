@@ -24,6 +24,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, concatenate
+from matplotlib.colors import Normalize, LinearSegmentedColormap
 
 
 # parameters
@@ -51,9 +52,9 @@ pt_test_num = 4
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size if isinstance(rndcrop_size, tuple) else (512, 512)
 img_thld = 0.5
-huber_weight = 10
-learning_rate = 0.00005
-batch_size = 3
+huber_weight = 7
+learning_rate = 0.0000005
+batch_size = 2
 epochs = 30
 output_size = 1  # binary segmentation
 
@@ -351,6 +352,72 @@ def show_img(is_DWI_only, img_set, ncol, nrow):
     return plt.show()
 
 
+def show_topographic(is_DWI_only, img_set, ncol, nrow):
+    """ Plot the list of images consisting of input image, mask, and predicted result """
+    # colormap + transparency
+    ncolors = 256
+    color_array = plt.get_cmap('jet')(range(ncolors))
+    color_array[:, -1] = np.linspace(0.0, 1.0, ncolors)
+    map_object = LinearSegmentedColormap.from_list(name='rainbow_alpha', colors=color_array)
+    plt.register_cmap(cmap=map_object)
+
+    fig = plt.figure(figsize=(8, 8))
+    num_imgs = ncol * nrow
+    ylabels = ['DWI ', 'Ground truth', 'AI prediction'] if is_DWI_only else ['ADC', 'DWI ', 'Ground truth', 'AI prediction']
+    # rnd_idx = [random.randint(0, len(img_set[0])) for _ in range(int(num_imgs / len(img_set)))]
+
+    for n in range(num_imgs):
+        fig.add_subplot(nrow, ncol, n + 1)
+        j, i = int(n % ncol), int(n // ncol)
+        if is_DWI_only:
+            assert nrow % len(img_set) == 0
+            plt.imshow(img_set[i][j])
+            plt.ylabel(ylabels[i]) if j == 0 else None
+            plt.xticks([]); plt.yticks([])
+            # print('img_set[', i, '][', j, ']')
+        else:
+            assert nrow % (len(img_set) + 1) == 0
+            if i == 0:  # ADC
+                plt.imshow(img_set[0][j][:, :, i])
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[0][', j, '][:,:,', i, ']')
+            elif i == 1:  # DWI
+                plt.imshow(img_set[0][j][:, :, i])
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[0][', j, '][:,:,', i, ']')
+            elif i > 1:  # GT & Prediction
+                plt.imshow(img_set[0][j][:, :, 1], cmap=plt.cm.gray)  # DWI as background
+                topog = plt.imshow(img_set[i-1][j], cmap='rainbow_alpha')
+                plt.colorbar(mappable=topog, orientation='horizontal')
+                plt.ylabel(ylabels[i]) if j == 0 else None
+                plt.xticks([]); plt.yticks([])
+                # print('img_set[', i, '][', j, ']')
+
+    # data = ('TIFF ' if is_tiff else 'DICOM ') + \
+    data = ('DICOM Data: DWI_' if is_DWI_only else 'Data: ADC+DWI_') + \
+           (subtypes[subtype_idx] if is_subtype else 'all types')
+    num_data = ' (' + str(len(x_train)) + ' in train, ' + str(len(x_valid)) + ' in test) \n'
+    network = 'max dim: ' + str(max_dim) + ', depth: ' + str(depth) + '\n'
+    param = 'Parameters: ' + str(rndcrop_size) + ', ' + str(learning_rate) + ', ' + str(batch_size) + ', ' + str(epochs) + '\n'
+    # metrics = 'Test dice loss & score: ' + str(round(test_result[0], 4)) + ', ' + str(round(test_result[1], 4))
+    fig.suptitle(data + num_data + network + param)  #+ metrics)
+    fig.tight_layout()
+
+    fig.set_size_inches(15, 7)
+    plt.savefig('stroke_w_lesion__' +
+                ('DWI-' if is_DWI_only else 'ADCDWI-') +
+                (subtypes[subtype_idx] if is_subtype else 'all') +
+                ('-' + str(len(x_train)) + '+' + str(len(x_valid))) +
+                ('__net-' + str(max_dim) + '.' + str(depth)) +
+                ('__' + ((str(rndcrop_size[0]) + '.' + str(rndcrop_size[1]) if isinstance(rndcrop_size, tuple) else str(rndcrop_size))) +
+                 '_' + str(learning_rate) + '_' + str(batch_size) + '_' +  str(epochs)) + '.png')  # +
+                # ('__dice-' + str(round(test_result[1], 4))) + '.png')
+
+    return plt.show()
+
+
 # Dice score and loss function
 def dice_score(y_true, y_pred):
     y_true = tf.cast(y_true, tf.float32)
@@ -542,14 +609,14 @@ img_set = [a[:10], b[:10], c[:10]]
 #ncol = math.floor(len(a)/2)
 ncol = len(a) if len(a) < 10 else 10
 nrow = 3 if is_DWI_only else 4
-show_img(is_DWI_only, img_set, ncol, nrow)
+#show_img(is_DWI_only, img_set, ncol, nrow)
+show_topographic(is_DWI_only, img_set, ncol, nrow)
 
 
+'''
 #####
 plt.pcolor(img[0][:,:,0])
 #####
-from matplotlib.colors import Normalize, LinearSegmentedColormap
-
 # transparency
 alphas = Normalize(0, .3, clip=True)(np.abs(img[0][:,:,0]))
 alphas = np.clip(alphas, .4, 1)
@@ -574,7 +641,7 @@ plt.colorbar(mappable=h)
 # outline
 ax.contour(img[0][:,:,0], levels=[-.1, .1], colors='k', linestyles='-')  # darker background
 ax.set_axis_off()
-
+'''
 
 '''
 img_arg = np.argmax(img, axis=-1)
