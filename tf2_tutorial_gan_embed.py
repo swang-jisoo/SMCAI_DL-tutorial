@@ -13,6 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+#####
+# This file can be downloaded from: https://github.com/tensorflow/docs / tools/tensorflow_docs/vis/embed.py
+# It is used to create gif file for GAN result
+#####
 """Simple functions for embedding data in a notebook file."""
 
 import base64
