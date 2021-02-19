@@ -146,7 +146,7 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
     with open(img_fname, 'r') as f:
         images = f.read().split()
 
-    xs, ys = [], []
+    xs, ys, ys_w255, ys_wo255 = [], [], [], []
 
     for i, fname in enumerate(images):
         x = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
@@ -170,13 +170,23 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
         x = np.asarray(x, dtype='float32') / 255.0
         y = np.asarray(y, dtype='float32')
 
+        y_w255, y_wo255 = y.copy(), y.copy()
+        #y_w255[y_w255 == 255] = 21
+        y_wo255[y_wo255 == 255] = 0
+        #y_w255 = tf.keras.utils.to_categorical(y_w255, 22)
+        y_wo255 = tf.keras.utils.to_categorical(y_wo255, 21)
+
         xs.append(x)
-        ys.append(y)
+        #ys.append(y)
+        #ys_w255.append(y_w255)
+        ys_wo255.append(y_wo255)
 
     x_np = np.asarray(xs)
-    y_np = np.asarray(ys)
+    #y_np = np.asarray(ys)
+    #y_np_w255 = np.asarray(ys_w255)
+    y_np_wo255 = np.asarray(ys_wo255)
 
-    return x_np, y_np
+    return x_np, y_np_wo255 #y_np, y_np_w255, y_np_wo255
 
 
 def crop_center(pil_img, center_crop_size):
@@ -189,8 +199,8 @@ def crop_center(pil_img, center_crop_size):
                          (img_height + crop_height) // 2))
 
 
-x_train, y_train = read_voc_images(voc_dir, center_crop_size, resize_size, True)
-x_valid, y_valid = read_voc_images(voc_dir, center_crop_size, resize_size, False)
+x_train, y_train_wo255 = read_voc_images(voc_dir, center_crop_size, resize_size, True) # y_train, y_train_w255,
+x_valid, y_valid_wo255 = read_voc_images(voc_dir, center_crop_size, resize_size, False) # y_valid, y_valid_w255,
 
 # Construct U-Net model
 # *** input shape
@@ -272,7 +282,7 @@ expn3_concat = concatenate([expn3_up, cont2_2], axis=-1, name='expn3_concat')  #
 expn4_up = Conv2DTranspose(64, 2, strides=2, padding='same',
                            activation='relu', kernel_initializer='he_normal', name='expn4_up')(expn3_concat)  # up-sampling; 392, 392, 64
 expn4_concat = concatenate([expn4_up, cont1_2], axis=-1, name='expn4_concat')  # 392, 392, 128
-
+'''
 # *** channel number
 output_tensor = Conv2D(20 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_concat)
 
@@ -282,6 +292,7 @@ u_net.summary()
 
 # Compile the model
 opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+
 u_net.compile(loss='sparse_categorical_crossentropy',
               optimizer=opt,
               metrics=['accuracy'])
@@ -291,3 +302,48 @@ u_net.fit(x_train, y_train, batch_size=batch_size, epochs=epochs)
 
 # Test the model with test set
 u_net.evaluate(x_valid, y_valid, verbose=2)
+imgs = u_net.predict(x_valid)
+img = Image.fromarray(imgs[0], 'RGB')
+img.show()
+'''
+'''
+# one hot w/ 255
+output_tensor = Conv2D(20 + 1 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_concat)
+
+# Create a model
+u_net = Model(input_tensor, output_tensor, name='u_net')
+u_net.summary()
+
+# Compile the model
+opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+u_net.compile(loss='categorical_crossentropy',
+              optimizer=opt,
+              metrics=['accuracy'])
+u_net.fit(x_train, y_train_w255, batch_size=batch_size, epochs=epochs)
+
+# Test the model with test set
+u_net.evaluate(x_valid, y_valid_w255, verbose=2)
+imgs = u_net.predict(x_valid)
+img = Image.fromarray(imgs[0], 'RGB')
+img.show()
+'''
+
+# one hot w/o 255
+output_tensor = Conv2D(20 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_concat)
+# Create a model
+u_net = Model(input_tensor, output_tensor, name='u_net')
+u_net.summary()
+
+# Compile the model
+opt = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+u_net = Model(input_tensor, output_tensor, name='u_net')
+u_net.compile(loss='categorical_crossentropy',
+              optimizer=opt,
+              metrics=['accuracy'])
+u_net.fit(x_train, y_train_wo255, batch_size=batch_size, epochs=epochs)
+
+# Test the model with test set
+u_net.evaluate(x_valid, y_valid_wo255, verbose=2)
+imgs = u_net.predict(x_valid)
+img = Image.fromarray(imgs[0], 'RGB')
+img.show()
