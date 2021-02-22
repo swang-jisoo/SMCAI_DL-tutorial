@@ -199,12 +199,9 @@ def train_step(images):
 def train(dataset, epochs):
     for epoch in range(epochs):
         start = time.time()
-        gen_losses, disc_losses = [], []
 
         for image_batch in dataset:
             gen_loss, disc_loss = train_step(image_batch)
-            gen_losses.append(gen_loss)
-            disc_losses.append(disc_loss)
 
         # Produce images for the GIF as we go
         display.clear_output(wait=True)
@@ -215,9 +212,7 @@ def train(dataset, epochs):
             checkpoint.save(file_prefix=checkpoint_prefix)
 
         print('Time for epoch {} is {} sec'.format(epoch + 1, time.time() - start))
-        gen_loss_avg = sum(gen_losses) / len(gen_losses)
-        disc_loss_avg = sum(disc_losses) / len(disc_losses)
-        print('Generator Loss: {:.4f} & Discriminator Loss: {:.4f}'.format(gen_loss_avg, disc_loss_avg))
+        print('Generator Loss: {:.4f} & Discriminator Loss: {:.4f}'.format(gen_loss, disc_loss ))
 
     # Generate after the final epoch
     display.clear_output(wait=True)
