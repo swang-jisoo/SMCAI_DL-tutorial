@@ -16,8 +16,8 @@
 
 # Import necessary libraries
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dropout, Flatten, Dense
 from tensorflow.keras import Input, Model
+from tensorflow.keras.layers import UpSampling2D, Conv2D, MaxPooling2D, Flatten, Dropout, Dense
 
 # Set the value of hyper-parameters
 IMG_ROWS, IMG_COLS, IMG_CHANNELS = 32, 32, 3
@@ -104,3 +104,5 @@ vgg19.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE)
 
 # Predict the model with test set
 vgg19.evaluate(x_test, y_test, verbose=VERBOSE)
+prediction = vgg19.predict(x_test)
+print(prediction)
