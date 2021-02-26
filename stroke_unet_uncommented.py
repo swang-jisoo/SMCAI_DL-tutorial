@@ -52,8 +52,8 @@ pt_test_num = 4
 rndcrop_size = (96, 96)
 resize_size = rndcrop_size if isinstance(rndcrop_size, tuple) else (512, 512)
 img_thld = 0.5
-huber_weight = 7
-learning_rate = 0.0000005
+huber_weight = 2
+learning_rate = 0.000005
 batch_size = 2
 epochs = 30
 output_size = 1  # binary segmentation
@@ -356,8 +356,8 @@ def show_topographic(is_DWI_only, img_set, ncol, nrow):
     """ Plot the list of images consisting of input image, mask, and predicted result """
     # colormap + transparency
     ncolors = 256
-    color_array = plt.get_cmap('jet')(range(ncolors))
-    color_array[:, -1] = np.linspace(0.0, 1.0, ncolors)
+    color_array = plt.get_cmap('rainbow')(range(ncolors))
+    color_array[:, -1] = np.linspace(0.05, 1.0, ncolors)
     map_object = LinearSegmentedColormap.from_list(name='rainbow_alpha', colors=color_array)
     plt.register_cmap(cmap=map_object)
 
@@ -389,7 +389,7 @@ def show_topographic(is_DWI_only, img_set, ncol, nrow):
                 # print('img_set[0][', j, '][:,:,', i, ']')
             elif i > 1:  # GT & Prediction
                 plt.imshow(img_set[0][j][:, :, 1], cmap=plt.cm.gray)  # DWI as background
-                topog = plt.imshow(img_set[i-1][j], cmap='rainbow_alpha')
+                topog = plt.imshow(img_set[i-1][j], cmap='rainbow_alpha', alpha=0.8)
                 plt.colorbar(mappable=topog, orientation='horizontal')
                 plt.ylabel(ylabels[i]) if j == 0 else None
                 plt.xticks([]); plt.yticks([])
@@ -631,7 +631,6 @@ color_array = plt.get_cmap('jet')(range(ncolors))
 color_array[:,-1] = np.linspace(0.0, 1.0, ncolors)
 map_object = LinearSegmentedColormap.from_list(name='rainbow_alpha',colors=color_array)
 plt.register_cmap(cmap=map_object)
-
 
 fig, ax = plt.subplots()
 ax.imshow(x_valid[0][:,:,0], cmap=plt.cm.gray)
