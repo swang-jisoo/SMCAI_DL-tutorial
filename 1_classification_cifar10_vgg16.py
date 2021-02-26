@@ -10,7 +10,7 @@
 # ref: https://www.cs.toronto.edu/~kriz/cifar.html
 
 # model: VGG16 (Deep Convolutional Neural Network - DCNN)
-# ref. paper: VERY DEEP CONVOLUTIONAL NETWORKS FOR LARGE-SCALE IMAGE RECOGNITION
+# ref. paper: (VGG16 paper) VERY DEEP CONVOLUTIONAL NETWORKS FOR LARGE-SCALE IMAGE RECOGNITION
 # idea: increase the depth of networks by using a small (3x3) convolution filters in all layers
 # 3x3 convolution + maxpooling
 # contribution: outperforming results using CNN with substantially increased depth

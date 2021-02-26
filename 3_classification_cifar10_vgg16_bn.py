@@ -10,14 +10,19 @@
 # ref: https://www.cs.toronto.edu/~kriz/cifar.html
 
 # model: VGG16 with Batch Normalization
-# ref. paper: VERY DEEP CONVOLUTIONAL NETWORKS FOR LARGE-SCALE IMAGE RECOGNITION
+# Batch Normalization
+# : control the change of layer's input distributions during training
+# - advantage:
+# (1) reduce internal covariate shift
+# (2) make optimization landscape smoother, inducing predictive/stable gradients
+# - ref. paper: (batch normalization _ optimization) How Does Batch Normalization Help Optimization?
 #####
 
 
 # Import necessary libraries
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, BatchNormalization, Activation, MaxPooling2D, Dropout, Flatten, Dense
 from tensorflow.keras import Input, Model
+from tensorflow.keras.layers import UpSampling2D, Conv2D, MaxPooling2D, Flatten, Dropout, Dense
 
 # Set the value of hyper-parameters
 IMG_ROWS, IMG_COLS, IMG_CHANNELS = 32, 32, 3
