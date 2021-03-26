@@ -156,8 +156,8 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
         x = crop_center(x, center_crop_size)
         y = crop_center(y, center_crop_size)
 
-        x = x.resize(resize_size)
-        y = y.resize(resize_size)
+        #x = x.resize(resize_size)
+        #y = y.resize(resize_size)
 
         # Normalize
         # Converting pil.image object to np.array would remove the colormap on the ground truth annotations
@@ -204,7 +204,7 @@ x_valid, y_valid_wo255 = read_voc_images(voc_dir, center_crop_size, resize_size,
 
 # Construct U-Net model
 # *** input shape
-input_tensor = Input(shape=resize_size + (3,), name='input_tensor')
+input_tensor = Input(shape=center_crop_size + (3,), name='input_tensor') # resize_size
 
 # Contracting path
 cont1_1 = Conv2D(64, 3, activation='relu', padding='same', name='cont1_1')(input_tensor)  # 570, 570, 64
@@ -274,14 +274,20 @@ expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4
 expn2_up = Conv2DTranspose(256, 2, strides=2, padding='same',
                            activation='relu', kernel_initializer='he_normal', name='expn2_up')(cont4_2)  # up-sampling; 104, 104, 256
 expn2_concat = concatenate([expn2_up, cont3_2], axis=-1, name='expn2_concat')  # 104, 104, 512
+expn2_1 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_1')(expn2_concat)  # 102, 102, 256
+expn2_2 = Conv2D(256, 3, activation='relu', padding='same', name='expn2_2')(expn2_1)  # 100, 100, 256
 
 expn3_up = Conv2DTranspose(128, 2, strides=2, padding='same',
                            activation='relu', kernel_initializer='he_normal', name='expn3_up')(expn2_concat)  # up-sampling; 200, 200, 128
 expn3_concat = concatenate([expn3_up, cont2_2], axis=-1, name='expn3_concat')  # 200, 200, 256
+expn3_1 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_1')(expn3_concat)  # 198, 198, 128
+expn3_2 = Conv2D(128, 3, activation='relu', padding='same', name='expn3_2')(expn3_1)  # 196, 196, 128
 
 expn4_up = Conv2DTranspose(64, 2, strides=2, padding='same',
                            activation='relu', kernel_initializer='he_normal', name='expn4_up')(expn3_concat)  # up-sampling; 392, 392, 64
 expn4_concat = concatenate([expn4_up, cont1_2], axis=-1, name='expn4_concat')  # 392, 392, 128
+expn4_1 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_1')(expn4_concat)  # 390, 390, 64
+expn4_2 = Conv2D(64, 3, activation='relu', padding='same', name='expn4_2')(expn4_1)  # 388, 388, 64
 '''
 # *** channel number
 output_tensor = Conv2D(20 + 1, 1, padding='same', activation='sigmoid', name='output_tensor')(expn4_concat)
