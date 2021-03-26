@@ -217,11 +217,6 @@ vgg16.compile(loss='categorical_crossentropy',  # 'sparse_categorical_crossentro
               optimizer=optimizer,
               metrics=['accuracy'])
 
-# Fix the gpu memory issue
-# Error: failed to create cublas handle: CUBLAS_STATUS_ALLOC_FAILED
-config = tf.compat.v1.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.3  # <=0.3 with GTX 1050 (2GB)
-session = tf.compat.v1.Session(config=config)
 
 # Train the model
 # tf.keras.Model.fit(x=None, y=None, batch_size=32, epochs=1,
@@ -240,7 +235,7 @@ session = tf.compat.v1.Session(config=config)
 # more info can be found at https://www.tensorflow.org/versions/r1.15/api_docs/python/tf/keras/callbacks
 # - ref: https://www.tensorflow.org/versions/r1.15/api_docs/python/tf/keras/Model#fit
 vgg16.fit(x_train, y_train, epochs=EPOCHS, batch_size=BATCH_SIZE,
-          validation_split=0.2)
+          validation_split=0.2, verbose=2)
 
 # Evaluate/predict the model with test set
 # tf.keras.Model.evaluate(x, y): Returns the loss value & metrics values for the model in test mode.
