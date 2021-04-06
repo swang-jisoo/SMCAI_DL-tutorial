@@ -35,7 +35,7 @@ KERNEL_SIZE = 3
 HUBER_WEIGHT = 2
 LEARNING_RATE = 1e-4
 BATCH_SIZE = 3
-EPOCHS = 30
+EPOCHS = 60
 VERBOSE = 1
 
 today = ''.join(str(date.today()).split('-'))[2:]
@@ -270,16 +270,26 @@ model.compile(optimizer=opt, loss=weighted_binary_crossentropy, metrics=[dice_sc
 model.summary()
 
 # Train the model to adjust parameters to minimize the loss
+model.load_weights(checkpoint_path)
 model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS, verbose=2, callbacks=[cp_callback])  # validation_split=PER_VAL,
 
 # Generate the predicted result and plot it with the original image and mask
 # model.load_weights(checkpoint_path)
+# epochs = 20+20(210406:17:11, 0.75)
 pred = model.predict(x_test)
 
 
 # Plot the test result
 show_idx = [i for i in range(10)]  # [1,15,21,35,45,57,68.73,85,91]
-nrow, ncol = 2, len(show_idx)
+
+# ytitle = ["DWI", "Ground Truth", "AI Prediction"]
+ytitle = ["ADC", "DWI", "Ground Truth", "AI Prediction"]
+nrow, ncol = len(ytitle), len(show_idx)
+
+# file name to save
+today = ''.join(str(date.today()).split('-'))[2:]
+save_name = 'stroke_3DCNN_results_%s.png' % (today)
+
 fig, ax = plt.subplots(nrow, ncol, figsize=(2*ncol, 2*nrow))
 
 for i in show_idx:
@@ -297,7 +307,7 @@ for i in show_idx:
     adc = (adc * 256).astype('uint8')
 
     # GT
-    gt_mask = [0, 0, 0] * np.ones(shape=x_test.shape, dtype='uint8')
+    gt_mask = [0, 0, 0] * np.ones(shape=dwi.shape, dtype='uint8')
     # gt_mask = np.copy(gt)
     gt_mask[(gt > 0).all(-1)] = [128, 0, 0]
     gt_mask = gt_mask.astype('uint8')
@@ -305,23 +315,20 @@ for i in show_idx:
 
     # Prediction
     seg_mask = cv2.cvtColor(cv2.applyColorMap(seg, cv2.COLORMAP_JET), cv2.COLOR_BGR2RGB)
+    seg_mask[(seg_mask == [0, 0, 128]).all(-1)] = [0, 0, 0]
     seg_dwi_result = cv2.addWeighted(dwi, 1, seg_mask, 0.4, 0)
-    # seg_adc_result = cv2.addWeighted(adc, 1, seg_mask, 0.4, 0)
 
-    ax[0, i].imshow(gt_result)
-    ax[1, i].imshow(seg_dwi_result)
-    if i == 0:
-        ax[0, i].tick_params(axis='both', which='both', length=0)
-        ax[0, i].axes.xaxis.set_ticklabels([])
-        ax[0, i].axes.yaxis.set_ticklabels([])
-        ax[0, i].set_ylabel("GT")
-        ax[1, i].tick_params(axis='both', which='both', length=0)
-        ax[1, i].axes.xaxis.set_ticklabels([])
-        ax[1, i].axes.yaxis.set_ticklabels([])
-        ax[1, i].set_ylabel("Prediction")
-    else:
-        ax[0, i].axis('off')
-        ax[1, i].axis('off')
+    # ximg = [dwi, gt_result, seg_dwi_result]
+    ximg = [adc, dwi, gt_result, seg_dwi_result]
+    for j in range(nrow):
+        ax[j, i].imshow(ximg[j])
+        if i == 0:
+            ax[j, i].tick_params(axis='both', which='both', length=0)
+            ax[j, i].axes.xaxis.set_ticklabels([])
+            ax[j, i].axes.yaxis.set_ticklabels([])
+            ax[j, i].set_ylabel(ytitle[j])
+        else:
+            ax[j, i].axis('off')
 
 plt.tight_layout(pad=1.0, w_pad=0.0, h_pad=1.0)
 
