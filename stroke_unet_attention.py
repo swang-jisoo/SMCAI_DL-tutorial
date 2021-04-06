@@ -297,7 +297,7 @@ for i in show_idx:
     adc = (adc * 256).astype('uint8')
 
     # GT
-    gt_mask = [0, 0, 0] * np.ones(shape=[256,256,3], dtype='uint8')
+    gt_mask = [0, 0, 0] * np.ones(shape=x_test.shape, dtype='uint8')
     # gt_mask = np.copy(gt)
     gt_mask[(gt > 0).all(-1)] = [128, 0, 0]
     gt_mask = gt_mask.astype('uint8')
