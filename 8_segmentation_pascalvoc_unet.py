@@ -61,17 +61,17 @@ from tensorflow.keras.layers import Conv2D, MaxPooling2D, Conv2DTranspose, Cropp
 
 # Hyper-parameters
 center_crop_size = (256, 256)
-DATA_SHAPE = center_crop_size + (3, )
 resize_size = (256, 256)
-PER_VAL = 0.3
-LEARNING_RATE = 0.0001
-BATCH_SIZE = 2
-EPOCHS = 20
-dim = 16
-kernel_size = 3
+DATA_SHAPE = center_crop_size + (3, )
+OUTPUT_SIZE = 21
+LEARNING_RATE = 1e-6
+BATCH_SIZE = 4
+EPOCHS = 10
+DIM = 16
+KERNEL_SIZE = 3
 VERBOSE = 1
 
-#GPU
+# GPU
 gpu = tf.config.experimental.list_physical_devices('GPU')
 try:
     tf.config.experimental.set_memory_growth(gpu[0], True)
@@ -120,7 +120,7 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
     with open(img_fname, 'r') as f:
         images = f.read().split()
 
-    xs, ys, ys_w255, ys_wo255 = [], [], [], []
+    xs, ys = [], []
 
     for i, fname in enumerate(images):
         x = Image.open(os.path.join(voc_dir, 'JPEGImages', f'{fname}.jpg'))
@@ -134,33 +134,22 @@ def read_voc_images(voc_dir, center_crop_size, resize_size, is_train=True):
         y = y.resize(resize_size)
 
         # Normalize
-        # Converting pil.image object to np.array would remove the colormap on the ground truth annotations
-        # Thus, the codes below result:
-        # (1) an array of pixel values with [0:20] = class labels incl. background and 255 = border region
-        # (2) pixel values multiplied by 12 for visual purpose
-        # (3) a mask image in grey scale
-        # y_trial = np.asarray(y) * 12  # (1)-(2)
-        # img_y = Image.fromarray(y_trial, 'L'); img_y.show()  # (3)
         x = np.asarray(x, dtype='float32') / 255.0
-        y = np.asarray(y, dtype='float32')
+        y = np.asarray(y, dtype='uint8')
 
-        y_w255, y_wo255 = y.copy(), y.copy()
-        y_w255[y_w255 == 255] = 21
-        #y_wo255[y_wo255 == 255] = 0
-        y_w255 = tf.keras.utils.to_categorical(y_w255, 22)
-        #y_wo255 = tf.keras.utils.to_categorical(y_wo255, 21)
+        # Convert border index into background index
+        # labels: 0-20 (here, 0 = background + border region)
+        y_noborder = y.copy()
+        y_noborder[y_noborder == 255] = 0
+        #y_wo255 = tf.keras.utils.to_categorical(y_wo255, OUTPUT_SIZE)
 
         xs.append(x)
-        #ys.append(y)
-        ys_w255.append(y_w255)
-        #ys_wo255.append(y_wo255)
+        ys.append(y_noborder)
 
     x_np = np.asarray(xs)
-    #y_np = np.asarray(ys)
-    y_np_w255 = np.asarray(ys_w255)
-    #y_np_wo255 = np.asarray(ys_wo255)
+    y_np = np.asarray(ys)
 
-    return x_np, y_np_w255 #y_np, y_np_w255, y_np_wo255
+    return x_np, y_np
 
 
 def crop_center(pil_img, center_crop_size):
@@ -173,80 +162,80 @@ def crop_center(pil_img, center_crop_size):
                          (img_height + crop_height) // 2))
 
 
-x_train, y_train_wo255 = read_voc_images(voc_dir, center_crop_size, resize_size, True) # y_train, y_train_w255,
-x_valid, y_valid_wo255 = read_voc_images(voc_dir, center_crop_size, resize_size, False) # y_valid, y_valid_w255,
+x_train, y_train = read_voc_images(voc_dir, center_crop_size, resize_size, True)
+x_valid, y_valid = read_voc_images(voc_dir, center_crop_size, resize_size, False)
 
 
 # Build U-net
-src = Input(DATA_SHAPE, name='input')
+input = Input(DATA_SHAPE, name='input')
 
 # Encoder
 # block 1
-conv1_1 = Conv2D(dim, kernel_size, activation='relu', padding='same', name='conv1_1')(src)
-conv1_2 = Conv2D(dim, kernel_size, activation='relu', padding='same', name='conv1_2')(conv1_1)
+conv1_1 = Conv2D(DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv1_1')(input)
+conv1_2 = Conv2D(DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv1_2')(conv1_1)
 max1 = MaxPooling2D(2, padding='same', name='max1')(conv1_2)
 
 # block 2
-conv2_1 = Conv2D(2 * dim, kernel_size, activation='relu', padding='same', name='conv2_1')(max1)
-conv2_2 = Conv2D(2 * dim, kernel_size, activation='relu', padding='same', name='conv2_2')(conv2_1)
+conv2_1 = Conv2D(2 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv2_1')(max1)
+conv2_2 = Conv2D(2 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv2_2')(conv2_1)
 max2 = MaxPooling2D(2, padding='same', name='max2')(conv2_2)
 
 # block 3
-conv3_1 = Conv2D(4 * dim, kernel_size, activation='relu', padding='same', name='conv3_1')(max2)
-conv3_2 = Conv2D(4 * dim, kernel_size, activation='relu', padding='same', name='conv3_2')(conv3_1)
+conv3_1 = Conv2D(4 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv3_1')(max2)
+conv3_2 = Conv2D(4 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv3_2')(conv3_1)
 max3 = MaxPooling2D(2, padding='same', name='max3')(conv3_2)
 
 # block 4
-conv4_1 = Conv2D(8 * dim, kernel_size, activation='relu', padding='same', name='conv4_1')(max3)
-conv4_2 = Conv2D(8 * dim, kernel_size, activation='relu', padding='same', name='conv4_2')(conv4_1)
+conv4_1 = Conv2D(8 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv4_1')(max3)
+conv4_2 = Conv2D(8 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv4_2')(conv4_1)
 max4 = MaxPooling2D(2, padding='same', name='max4')(conv4_2)
 
 # block 5
-conv5_1 = Conv2D(16 * dim, kernel_size, activation='relu', padding='same', name='conv5_1')(max4)
-conv5_2 = Conv2D(16 * dim, kernel_size, activation='relu', padding='same', name='conv5_2')(conv5_1)
+conv5_1 = Conv2D(16 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv5_1')(max4)
+conv5_2 = Conv2D(16 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='conv5_2')(conv5_1)
 
 # Decoder
 # block 4
-deconv4_1 = Conv2DTranspose(8 * dim, 2, 2, activation='relu', name='deconv4_1')(conv5_2)
+deconv4_1 = Conv2DTranspose(8 * DIM, 2, 2, activation='relu', name='deconv4_1')(conv5_2)
 merge4 = tf.concat([deconv4_1, conv4_2], axis=-1, name='merge4')
-deconv4_2 = Conv2D(8 * dim, kernel_size, activation='relu', padding='same', name='deconv4_2')(merge4)
-deconv4_3 = Conv2D(8 * dim, kernel_size, activation='relu', padding='same', name='deconv4_3')(deconv4_2)
+deconv4_2 = Conv2D(8 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv4_2')(merge4)
+deconv4_3 = Conv2D(8 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv4_3')(deconv4_2)
 
 # block 3
-deconv3_1 = Conv2DTranspose(4 * dim, 2, 2, activation='relu', name='deconv3_1')(deconv4_3)
+deconv3_1 = Conv2DTranspose(4 * DIM, 2, 2, activation='relu', name='deconv3_1')(deconv4_3)
 merge3 = tf.concat([deconv3_1, conv3_2], axis=-1, name='merge3')
-deconv3_2 = Conv2D(4 * dim, kernel_size, activation='relu', padding='same', name='deconv3_2')(merge3)
-deconv3_3 = Conv2D(4 * dim, kernel_size, activation='relu', padding='same', name='deconv3_3')(deconv3_2)
+deconv3_2 = Conv2D(4 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv3_2')(merge3)
+deconv3_3 = Conv2D(4 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv3_3')(deconv3_2)
 
 # block 2
-deconv2_1 = Conv2DTranspose(2 * dim, 2, 2, activation='relu', name='deconv2_1')(deconv3_3)
+deconv2_1 = Conv2DTranspose(2 * DIM, 2, 2, activation='relu', name='deconv2_1')(deconv3_3)
 merge2 = tf.concat([deconv2_1, conv2_2], axis=-1, name='merge2')
-deconv2_2 = Conv2D(2 * dim, kernel_size, activation='relu', padding='same', name='deconv2_2')(merge2)
-deconv2_3 = Conv2D(2 * dim, kernel_size, activation='relu', padding='same', name='deconv2_3')(deconv2_2)
+deconv2_2 = Conv2D(2 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv2_2')(merge2)
+deconv2_3 = Conv2D(2 * DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv2_3')(deconv2_2)
 
 # block 1
-deconv1_1 = Conv2DTranspose(dim, 2, 2, activation='relu', name='deconv1_1')(deconv2_3)
+deconv1_1 = Conv2DTranspose(DIM, 2, 2, activation='relu', name='deconv1_1')(deconv2_3)
 merge1 = tf.concat([deconv1_1, conv1_2], axis=-1, name='merge1')
-deconv1_2 = Conv2D(dim, kernel_size, activation='relu', padding='same', name='deconv1_2')(merge1)
-deconv1_3 = Conv2D(dim, kernel_size, activation='relu', padding='same', name='deconv1_3')(deconv1_2)
+deconv1_2 = Conv2D(DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv1_2')(merge1)
+deconv1_3 = Conv2D(DIM, KERNEL_SIZE, activation='relu', padding='same', name='deconv1_3')(deconv1_2)
 
-pred = Conv2D(22, kernel_size, activation='softmax', padding='same', name='output')(deconv1_3)
+output = Conv2D(OUTPUT_SIZE, KERNEL_SIZE, activation='softmax', padding='same', name='output')(deconv1_3)
 
-model = Model(src, pred, name='u_net')
-
+model = Model(input, output, name='u_net')
 
 # Train
-opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
-model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['accuracy'])  # 'categorical_crossentropy'
 model.summary()
-hist = model.fit(x_train, y_train_wo255, batch_size=BATCH_SIZE, epochs=EPOCHS, verbose=2)
 
+opt = tf.keras.optimizers.Adam(learning_rate=LEARNING_RATE)
+model.compile(optimizer=opt, loss='sparse_categorical_crossentropy', metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy()])
+
+hist = model.fit(x_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS, verbose=2)
 
 # Predict
 imgs = model.predict(x_valid)
 
-num_pic = 20
-plt.figure(figsize=(20,4))
+num_pic = 10
+plt.figure(figsize=(20, 4))
 for i in range(num_pic):
     ax = plt.subplot(2, num_pic, i+1)
     plt.imshow(x_valid[i])
